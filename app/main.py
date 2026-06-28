@@ -55,16 +55,22 @@ def _block_to_dict(block: Any) -> dict:
 
 
 def _text_from_content(content: Any) -> str:
-    """Extrai texto de um campo `content` que pode ser str ou lista de blocos."""
+    """Extrai texto de um `content` que pode ser str, dict (bloco único) ou lista.
+
+    No caso do advisor, `advisor_tool_result.content` é um objeto (dict) do tipo
+    `advisor_result` com o conselho em `.text`.
+    """
     if content is None:
         return ""
     if isinstance(content, str):
         return content
+    if isinstance(content, dict):
+        return content.get("text", "") or ""
     parts = []
     if isinstance(content, list):
         for item in content:
             d = item if isinstance(item, dict) else _block_to_dict(item)
-            if d.get("text"):
+            if isinstance(d, dict) and d.get("text"):
                 parts.append(d["text"])
     return "\n".join(parts)
 
@@ -187,6 +193,9 @@ def chat(req: ChatRequest):
                 "output_tokens": usage["output_tokens"],
             },
             "advisor": _advisor_usage(usage.get("raw")),
+            # `raw` exposto temporariamente para inspecionar o formato real do
+            # objeto usage da advisor tool (beta). Pode ser removido depois.
+            "raw": usage.get("raw"),
         },
     }
 
