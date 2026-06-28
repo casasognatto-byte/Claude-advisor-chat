@@ -8,8 +8,10 @@ Autenticação: login por usuário/senha (configurados via AUTH_USERS) com cooki
 de sessão assinado. Se AUTH_USERS estiver vazio, o site fica aberto (sem login).
 """
 
+import json
 import os
 import secrets
+from contextlib import contextmanager
 from typing import Any
 
 # Carrega .env em desenvolvimento local; em produção (Render) as variáveis
@@ -27,6 +29,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
+
+try:
+    import psycopg2
+except ImportError:  # pragma: no cover
+    psycopg2 = None
 
 # --- Configuração (ajustável por variáveis de ambiente) ---------------------
 EXECUTOR_MODEL = os.environ.get("EXECUTOR_MODEL", "claude-sonnet-4-6")
@@ -62,6 +69,57 @@ def _parse_users(raw: str) -> dict[str, str]:
 AUTH_USERS = _parse_users(os.environ.get("AUTH_USERS", ""))
 AUTH_ENABLED = bool(AUTH_USERS)
 
+# --- Banco de dados (histórico compartilhado) -------------------------------
+# DATABASE_URL: string de conexão Postgres (Neon, Supabase, Render…). Se não
+# estiver configurada, os endpoints de conversa respondem 503 e o frontend usa
+# armazenamento local (por computador) como fallback.
+DATABASE_URL = (os.environ.get("DATABASE_URL") or "").strip()
+DB_ENABLED = bool(DATABASE_URL and psycopg2)
+
+
+@contextmanager
+def _db():
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _init_db() -> None:
+    if not DB_ENABLED:
+        return
+    try:
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id         TEXT PRIMARY KEY,
+                    username   TEXT NOT NULL,
+                    title      TEXT NOT NULL DEFAULT 'Nova conversa',
+                    data       JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conv_user "
+                "ON conversations (username, updated_at DESC);"
+            )
+    except Exception as e:  # não derruba o app se o banco falhar no boot
+        print(f"[init_db] falha ao inicializar o banco: {e}")
+
+
+def _require_db() -> None:
+    if not DB_ENABLED:
+        raise HTTPException(503, "Banco de dados não configurado (DATABASE_URL).")
+
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
 
@@ -69,6 +127,7 @@ STATIC_DIR = os.path.join(HERE, "static")
 client = anthropic.Anthropic()
 
 app = FastAPI(title="Casa Sognatto · Advisor Chat")
+_init_db()
 
 
 class ChatRequest(BaseModel):
@@ -79,6 +138,17 @@ class ChatRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+class ConvCreate(BaseModel):
+    id: str | None = None
+    title: str | None = None
+    data: dict | None = None
+
+
+class ConvUpdate(BaseModel):
+    title: str | None = None
+    data: dict | None = None
 
 
 # --- Sessão / autenticação --------------------------------------------------
@@ -208,6 +278,87 @@ def me(request: Request):
     return {"user": current_user(request), "auth_enabled": AUTH_ENABLED}
 
 
+# --- Conversas (histórico compartilhado no banco) ---------------------------
+@app.get("/api/conversations")
+def list_conversations(request: Request):
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, title, EXTRACT(EPOCH FROM updated_at) "
+            "FROM conversations WHERE username = %s ORDER BY updated_at DESC",
+            (user,),
+        )
+        rows = cur.fetchall()
+    return [{"id": r[0], "title": r[1], "updatedAt": float(r[2])} for r in rows]
+
+
+@app.get("/api/conversations/{cid}")
+def get_conversation(cid: str, request: Request):
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, title, data FROM conversations WHERE id = %s AND username = %s",
+            (cid, user),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return {"id": row[0], "title": row[1], "data": row[2]}
+
+
+@app.post("/api/conversations")
+def create_conversation(body: ConvCreate, request: Request):
+    user = require_user(request)
+    _require_db()
+    cid = body.id or ("c" + secrets.token_hex(8))
+    title = (body.title or "Nova conversa")[:200]
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO conversations (id, username, title, data) "
+            "VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+            (cid, user, title, json.dumps(body.data or {})),
+        )
+    return {"id": cid, "title": title}
+
+
+@app.put("/api/conversations/{cid}")
+def update_conversation(cid: str, body: ConvUpdate, request: Request):
+    user = require_user(request)
+    _require_db()
+    sets, params = [], []
+    if body.title is not None:
+        sets.append("title = %s")
+        params.append(body.title[:200])
+    if body.data is not None:
+        sets.append("data = %s")
+        params.append(json.dumps(body.data))
+    if not sets:
+        return {"ok": True}
+    sets.append("updated_at = now()")
+    params.extend([cid, user])
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"UPDATE conversations SET {', '.join(sets)} "
+            "WHERE id = %s AND username = %s",
+            params,
+        )
+    return {"ok": True}
+
+
+@app.delete("/api/conversations/{cid}")
+def delete_conversation(cid: str, request: Request):
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM conversations WHERE id = %s AND username = %s",
+            (cid, user),
+        )
+    return {"ok": True}
+
+
 # --- Rota principal do chat -------------------------------------------------
 @app.post("/api/chat")
 def chat(req: ChatRequest, request: Request):
@@ -290,6 +441,7 @@ def health():
         "ok": True,
         "api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "auth_enabled": AUTH_ENABLED,
+        "db_enabled": DB_ENABLED,
     }
 
 

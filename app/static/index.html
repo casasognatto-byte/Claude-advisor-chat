@@ -11,88 +11,40 @@
   @font-face { font-family:'NeueMontreal'; src:url('/static/fonts/PPNeueMontreal.ttf') format('truetype'); font-display:swap; }
 
   :root {
-    --green-950: #0b1a10;
-    --green-900: #0f2114;
-    --green-800: #152C1C;
-    --green-700: #1d3a27;
-    --green-600: #274a34;
-    --cream: #ece9e1;
-    --muted: #93a597;
-    --gold: #c2a06a;
-    --gold-soft: #d8bd8b;
-    --border: #2a4434;
-    --advisor-bg: #20301c;
-    --user-bubble: #e7e3d8;
-    --user-text: #152C1C;
+    --green-950: #0b1a10; --green-900: #0f2114; --green-800: #152C1C;
+    --green-700: #1d3a27; --green-600: #274a34;
+    --cream: #ece9e1; --muted: #93a597; --gold: #c2a06a; --gold-soft: #d8bd8b;
+    --border: #2a4434; --advisor-bg: #20301c; --user-bubble: #e7e3d8; --user-text: #152C1C;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body {
-    margin: 0; display: flex; overflow: hidden;
-    font-family: 'NeueMontreal', system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: var(--green-800); color: var(--cream);
-  }
+  body { margin: 0; display: flex; overflow: hidden; font-family: 'NeueMontreal', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); }
 
-  /* ---------- Sidebar ---------- */
-  .sidebar {
-    width: 270px; flex: none; background: var(--green-950);
-    border-right: 1px solid var(--border); display: flex; flex-direction: column;
-    transition: width .18s ease, opacity .18s ease;
-  }
+  .sidebar { width: 270px; flex: none; background: var(--green-950); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width .18s ease, opacity .18s ease; }
   body.collapsed .sidebar { width: 0; opacity: 0; pointer-events: none; }
-  .sb-brand {
-    display: flex; align-items: center; gap: 10px;
-    padding: 14px 16px; border-bottom: 1px solid var(--border);
-  }
+  .sb-brand { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
   .sb-brand .key { color: var(--gold); flex: none; }
   .sb-brand .casa { font-family:'Sackers'; font-size: 8px; letter-spacing:.4em; color: var(--cream); padding-left:.4em; }
   .sb-brand .sognatto { font-family:'Benjamin'; font-size: 18px; letter-spacing:.04em; color: var(--cream); line-height: 1; }
-  .new-btn {
-    margin: 12px; padding: 11px 12px; background: var(--gold); color:#1c1408;
-    border: none; border-radius: 10px; cursor: pointer;
-    font-family:'Sackers'; font-size: 11px; letter-spacing:.12em; text-transform: uppercase;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
+  .new-btn { margin: 12px; padding: 11px 12px; background: var(--gold); color:#1c1408; border: none; border-radius: 10px; cursor: pointer; font-family:'Sackers'; font-size: 11px; letter-spacing:.12em; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; }
   .new-btn:hover { background: var(--gold-soft); }
   .conv-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
-  .conv {
-    display: flex; align-items: center; gap: 8px; padding: 9px 10px; margin-bottom: 3px;
-    border-radius: 9px; cursor: pointer; color: var(--cream); font-size: 13.5px;
-    border: 1px solid transparent;
-  }
+  .conv { display: flex; align-items: center; gap: 8px; padding: 9px 10px; margin-bottom: 3px; border-radius: 9px; cursor: pointer; color: var(--cream); font-size: 13.5px; border: 1px solid transparent; }
   .conv:hover { background: var(--green-800); }
   .conv.active { background: var(--green-700); border-color: var(--gold); }
   .conv .title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .conv .del {
-    flex: none; opacity: 0; color: var(--muted); background: none; border: none;
-    cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px;
-  }
+  .conv .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
   .conv:hover .del { opacity: .8; }
   .conv .del:hover { color: #ff9d9d; background: rgba(255,255,255,.06); }
-  .sb-footer {
-    border-top: 1px solid var(--border); padding: 12px 14px;
-    display: flex; align-items: center; justify-content: space-between; gap: 8px;
-    font-size: 12.5px; color: var(--muted);
-  }
+  .sb-footer { border-top: 1px solid var(--border); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
   .sb-footer .user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sb-footer button {
-    flex: none; background: transparent; color: var(--muted); border: 1px solid var(--border);
-    border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 11px;
-    font-family:'Sackers'; letter-spacing:.1em; text-transform: uppercase;
-  }
+  .sb-footer button { flex: none; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 11px; font-family:'Sackers'; letter-spacing:.1em; text-transform: uppercase; }
   .sb-footer button:hover { border-color: var(--gold); color: var(--gold); }
 
-  /* ---------- Conteúdo ---------- */
   .content { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
-  header {
-    padding: 10px 18px; background: var(--green-900); border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  }
+  header { padding: 10px 18px; background: var(--green-900); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .h-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .toggle {
-    background: transparent; border: 1px solid var(--border); color: var(--cream);
-    border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 15px; line-height: 1;
-  }
+  .toggle { background: transparent; border: 1px solid var(--border); color: var(--cream); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 15px; line-height: 1; }
   .toggle:hover { border-color: var(--gold); color: var(--gold); }
   .h-title { font-family:'Benjamin'; font-size: 16px; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tokens { font-size: 11.5px; color: var(--muted); text-align: right; line-height: 1.5; flex: none; }
@@ -101,8 +53,7 @@
 
   main { flex: 1; overflow-y: auto; padding: 22px 20px; display: flex; flex-direction: column; gap: 14px; }
   .inner { max-width: 820px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-  .msg { display: flex; }
-  .msg.user { justify-content: flex-end; }
+  .msg { display: flex; } .msg.user { justify-content: flex-end; }
   .bubble { max-width: 78%; padding: 11px 15px; border-radius: 14px; white-space: pre-wrap; word-wrap: break-word; line-height: 1.55; font-size: 14.5px; }
   .user .bubble { background: var(--user-bubble); color: var(--user-text); border-bottom-right-radius: 4px; }
   .assistant .bubble { background: var(--green-700); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
@@ -111,7 +62,7 @@
   .advisor .advice { white-space: pre-wrap; word-wrap: break-word; color: #cdbf9f; }
   .error .bubble { background: #3a1c1c; border: 1px solid #a55; color: #ffd9d9; }
   .empty { margin: auto; text-align: center; color: var(--muted); font-size: 14px; }
-  .empty .key { color: var(--gold); opacity: .8; margin-bottom: 10px; }
+  .empty .key { color: var(--gold); opacity: .8; margin-bottom: 10px; font-size: 34px; }
   .typing { color: var(--muted); font-size: 13px; font-style: italic; }
 
   footer { border-top: 1px solid var(--border); background: var(--green-900); padding: 12px 20px; }
@@ -119,11 +70,8 @@
   textarea { flex: 1; resize: none; background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; font: inherit; font-size: 14.5px; line-height: 1.4; max-height: 160px; }
   textarea:focus { outline: none; border-color: var(--gold); }
   #send { background: var(--gold); color: #1c1408; border: none; border-radius: 10px; padding: 11px 20px; font-family:'Sackers'; font-size: 12px; letter-spacing:.14em; text-transform: uppercase; cursor: pointer; }
-  #send:hover { background: var(--gold-soft); }
-  #send:disabled { opacity: .5; cursor: default; }
+  #send:hover { background: var(--gold-soft); } #send:disabled { opacity: .5; cursor: default; }
   .hint { max-width: 820px; margin: 7px auto 0; font-size: 10.5px; color: var(--muted); }
-
-  .keyicon { color: var(--gold); }
 </style>
 </head>
 <body>
@@ -133,17 +81,11 @@
         <circle cx="12" cy="11" r="8"/><circle cx="12" cy="11" r="2.6" fill="currentColor" stroke="none"/>
         <line x1="12" y1="19" x2="12" y2="52"/><line x1="12" y1="46" x2="19" y2="46"/><line x1="12" y1="40" x2="17.5" y2="40"/>
       </svg>
-      <div>
-        <div class="casa">CASA</div>
-        <div class="sognatto">SOGNATTO</div>
-      </div>
+      <div><div class="casa">CASA</div><div class="sognatto">SOGNATTO</div></div>
     </div>
     <button class="new-btn" id="new">＋ Nova conversa</button>
     <div class="conv-list" id="convList"></div>
-    <div class="sb-footer">
-      <span class="user" id="userLabel">—</span>
-      <button id="logout">Sair</button>
-    </div>
+    <div class="sb-footer"><span class="user" id="userLabel">—</span><button id="logout">Sair</button></div>
   </aside>
 
   <div class="content">
@@ -157,23 +99,66 @@
         <span class="g">Advisor:</span> <b><span id="tok-adv-in">0</span></b> / <b><span id="tok-adv-out">0</span></b>
       </div>
     </header>
-
     <main id="scroll"><div class="inner" id="chat"></div></main>
-
     <footer>
       <div class="composer">
         <textarea id="input" rows="1" placeholder="Escreva sua mensagem… (Enter envia, Shift+Enter quebra linha)"></textarea>
         <button id="send">Enviar</button>
       </div>
-      <div class="hint">A chave da API fica protegida no servidor · consultas ao advisor aparecem em dourado · cada conversa tem seu próprio histórico (salvo neste computador).</div>
+      <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas ao advisor aparecem em dourado.</div>
     </footer>
   </div>
 
 <script>
-  // ---------- Estado / armazenamento ----------
-  let USER = "anon";
-  let STORAGE_KEY = "cs_conversations__anon";
-  let conversations = [];   // [{id,title,apiMessages,view,tokens,updatedAt}]
+  // ---------- Camada de armazenamento (remoto via API ou local) ----------
+  const Store = {
+    mode: "local", user: "anon",
+    key() { return "cs_conversations__" + this.user; },
+    lAll() { try { return JSON.parse(localStorage.getItem(this.key())) || []; } catch (_) { return []; } },
+    lSave(a) { try { localStorage.setItem(this.key(), JSON.stringify(a)); } catch (_) {} },
+
+    async init(user) {
+      this.user = user;
+      try {
+        const res = await fetch("/api/conversations");
+        if (res.status === 401) { window.location.href = "/login"; return []; }
+        if (res.ok) { this.mode = "remote"; return await res.json(); }
+      } catch (_) {}
+      this.mode = "local";
+      return this.lAll().map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt || 0 }));
+    },
+    async getData(id) {
+      if (this.mode === "remote") {
+        const res = await fetch("/api/conversations/" + id);
+        if (res.ok) return (await res.json()).data || {};
+        return {};
+      }
+      const c = this.lAll().find(x => x.id === id);
+      return c ? (c.data || {}) : {};
+    },
+    async create(conv) {
+      if (this.mode === "remote") {
+        await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(conv) });
+      } else {
+        const a = this.lAll(); a.unshift({ id: conv.id, title: conv.title, data: conv.data, updatedAt: Date.now() }); this.lSave(a);
+      }
+    },
+    async update(id, fields) {
+      if (this.mode === "remote") {
+        await fetch("/api/conversations/" + id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
+      } else {
+        const a = this.lAll(); const c = a.find(x => x.id === id);
+        if (c) { if (fields.title != null) c.title = fields.title; if (fields.data != null) c.data = fields.data; c.updatedAt = Date.now(); a.sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0)); this.lSave(a); }
+      }
+    },
+    async remove(id) {
+      if (this.mode === "remote") { await fetch("/api/conversations/" + id, { method: "DELETE" }); }
+      else { this.lSave(this.lAll().filter(x => x.id !== id)); }
+    },
+  };
+
+  // ---------- Estado ----------
+  let conversations = [];   // {id,title,updatedAt,data|null,_new}
   let activeId = null;
 
   const chat = document.getElementById("chat");
@@ -185,27 +170,32 @@
 
   function uid() { return "c" + Date.now() + Math.random().toString(36).slice(2, 7); }
   function emptyTokens() { return { execIn: 0, execOut: 0, advIn: 0, advOut: 0, advAvailable: false }; }
-  function activeConv() { return conversations.find(c => c.id === activeId); }
+  function emptyData() { return { apiMessages: [], view: [], tokens: emptyTokens() }; }
+  function active() { return conversations.find(c => c.id === activeId); }
 
-  function load() {
-    try { conversations = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch (_) { conversations = []; }
-    if (!Array.isArray(conversations)) conversations = [];
+  async function ensureData(c) {
+    if (c.data == null) c.data = await Store.getData(c.id);
+    if (!c.data.apiMessages) c.data.apiMessages = [];
+    if (!c.data.view) c.data.view = [];
+    if (!c.data.tokens) c.data.tokens = emptyTokens();
+    return c.data;
   }
-  function save() {
-    const c = activeConv(); if (c) c.updatedAt = Date.now();
-    conversations.sort((a, b) => b.updatedAt - a.updatedAt);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations)); } catch (_) {}
+  async function persist(c) {
+    c.updatedAt = Date.now();
+    if (c._new) { await Store.create({ id: c.id, title: c.title, data: c.data }); c._new = false; }
+    else { await Store.update(c.id, { title: c.title, data: c.data }); }
+    conversations.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    renderList();
   }
 
-  // ---------- Renderização da lista ----------
+  // ---------- Renderização ----------
   function renderList() {
     convListEl.innerHTML = "";
     for (const c of conversations) {
       const row = document.createElement("div");
       row.className = "conv" + (c.id === activeId ? " active" : "");
       const t = document.createElement("div");
-      t.className = "title"; t.textContent = c.title || "Nova conversa";
-      t.title = "Clique duplo para renomear";
+      t.className = "title"; t.textContent = c.title || "Nova conversa"; t.title = "Clique duplo para renomear";
       const del = document.createElement("button");
       del.className = "del"; del.innerHTML = "🗑"; del.title = "Excluir conversa";
       row.appendChild(t); row.appendChild(del);
@@ -215,18 +205,14 @@
       convListEl.appendChild(row);
     }
   }
-
-  // ---------- Renderização do chat ----------
   function renderItem(item) {
     if (item.type === "user") {
       const r = document.createElement("div"); r.className = "msg user";
-      const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text;
-      r.appendChild(b); chat.appendChild(r);
+      const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text; r.appendChild(b); chat.appendChild(r);
     } else if (item.type === "assistant") {
       if (!item.text) return;
       const r = document.createElement("div"); r.className = "msg assistant";
-      const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text;
-      r.appendChild(b); chat.appendChild(r);
+      const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text; r.appendChild(b); chat.appendChild(r);
     } else if (item.type === "advisor") {
       const box = document.createElement("div"); box.className = "advisor";
       const l = document.createElement("div"); l.className = "label"; l.textContent = "🔑 Advisor consultado";
@@ -234,123 +220,122 @@
       box.appendChild(l); box.appendChild(body); chat.appendChild(box);
     } else if (item.type === "error") {
       const r = document.createElement("div"); r.className = "msg assistant error";
-      const b = document.createElement("div"); b.className = "bubble"; b.textContent = "⚠️ " + item.text;
-      r.appendChild(b); chat.appendChild(r);
+      const b = document.createElement("div"); b.className = "bubble"; b.textContent = "⚠️ " + item.text; r.appendChild(b); chat.appendChild(r);
     }
   }
   function renderChat() {
     chat.innerHTML = "";
-    const c = activeConv();
-    if (!c || c.view.length === 0) {
+    const c = active();
+    if (!c || !c.data || c.data.view.length === 0) {
       const e = document.createElement("div"); e.className = "empty";
-      e.innerHTML = '<div class="key" style="font-size:34px">🔑</div>Comece uma nova conversa.<br>Pergunte algo — o advisor entra nos momentos estratégicos.';
+      e.innerHTML = '<div class="key">🔑</div>Comece uma nova conversa.<br>Pergunte algo — o advisor entra nos momentos estratégicos.';
       chat.appendChild(e);
     } else {
-      for (const item of c.view) renderItem(item);
+      for (const item of c.data.view) renderItem(item);
     }
     renderTokens(); scrollDown();
     hTitle.textContent = c ? (c.title || "Nova conversa") : "Nova conversa";
   }
   function scrollDown() { scroll.scrollTop = scroll.scrollHeight; }
-
   let typingEl = null;
   function setTyping(on) {
     if (on) { typingEl = document.createElement("div"); typingEl.className = "typing"; typingEl.textContent = "pensando…"; chat.appendChild(typingEl); scrollDown(); }
     else if (typingEl) { typingEl.remove(); typingEl = null; }
   }
-
   function renderTokens() {
-    const t = activeConv() ? activeConv().tokens : emptyTokens();
+    const c = active();
+    const t = (c && c.data && c.data.tokens) ? c.data.tokens : emptyTokens();
     document.getElementById("tok-exec-in").textContent = t.execIn;
     document.getElementById("tok-exec-out").textContent = t.execOut;
     document.getElementById("tok-adv-in").textContent = t.advAvailable ? t.advIn : "0";
     document.getElementById("tok-adv-out").textContent = t.advAvailable ? t.advOut : "0";
   }
 
-  // ---------- Operações de conversa ----------
-  function newConv(selectIt = true) {
-    const c = { id: uid(), title: "Nova conversa", apiMessages: [], view: [], tokens: emptyTokens(), updatedAt: Date.now() };
-    conversations.unshift(c);
-    if (selectIt) activeId = c.id;
-    save(); renderList(); renderChat(); input.focus();
-    return c;
+  // ---------- Operações ----------
+  function newConv() {
+    const c = { id: uid(), title: "Nova conversa", updatedAt: Date.now(), data: emptyData(), _new: true };
+    conversations.unshift(c); activeId = c.id; renderList(); renderChat(); input.focus();
   }
-  function selectConv(id) { activeId = id; renderList(); renderChat(); input.focus(); }
-  function renameConv(id) {
+  async function selectConv(id) {
+    activeId = id; const c = active(); if (c) await ensureData(c);
+    renderList(); renderChat(); input.focus();
+  }
+  async function renameConv(id) {
     const c = conversations.find(x => x.id === id); if (!c) return;
     const name = prompt("Nome da conversa:", c.title || "");
-    if (name !== null) { c.title = name.trim() || "Nova conversa"; save(); renderList(); if (id === activeId) hTitle.textContent = c.title; }
+    if (name === null) return;
+    c.title = name.trim() || "Nova conversa";
+    await ensureData(c); await persist(c);
+    if (id === activeId) hTitle.textContent = c.title;
   }
-  function deleteConv(id) {
+  async function deleteConv(id) {
     const c = conversations.find(x => x.id === id); if (!c) return;
     if (!confirm('Excluir a conversa "' + (c.title || "Nova conversa") + '"? Isso não pode ser desfeito.')) return;
+    if (!c._new) await Store.remove(id);
     conversations = conversations.filter(x => x.id !== id);
     if (activeId === id) activeId = conversations.length ? conversations[0].id : null;
-    if (!conversations.length) newConv(); else { save(); renderList(); renderChat(); }
+    if (!conversations.length) { newConv(); } else { await selectConv(activeId); }
   }
 
-  // ---------- Envio ----------
   async function send() {
     const text = input.value.trim(); if (!text) return;
-    let c = activeConv(); if (!c) c = newConv();
+    let c = active(); if (!c) { newConv(); c = active(); }
+    await ensureData(c);
     input.value = ""; autosize(); sendBtn.disabled = true;
 
-    c.apiMessages.push({ role: "user", content: text });
-    c.view.push({ type: "user", text });
-    if (c.title === "Nova conversa") { c.title = text.slice(0, 42) + (text.length > 42 ? "…" : ""); hTitle.textContent = c.title; renderList(); }
-    renderItem({ type: "user", text }); scrollDown(); setTyping(true); save();
+    c.data.apiMessages.push({ role: "user", content: text });
+    c.data.view.push({ type: "user", text });
+    if (c.title === "Nova conversa") { c.title = text.slice(0, 42) + (text.length > 42 ? "…" : ""); hTitle.textContent = c.title; }
+    renderItem({ type: "user", text }); scrollDown(); setTyping(true);
+    await persist(c);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: c.apiMessages }),
-      });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: c.data.apiMessages }) });
       setTyping(false);
       if (res.status === 401) { window.location.href = "/login"; return; }
       if (!res.ok) {
-        let detail = res.statusText;
-        try { detail = (await res.json()).detail || detail; } catch (_) {}
-        c.view.push({ type: "error", text: detail }); renderItem({ type: "error", text: detail }); scrollDown(); save(); return;
+        let detail = res.statusText; try { detail = (await res.json()).detail || detail; } catch (_) {}
+        c.data.view.push({ type: "error", text: detail }); renderItem({ type: "error", text: detail }); scrollDown(); await persist(c); return;
       }
       const data = await res.json();
-      for (const m of data.append) c.apiMessages.push(m);
-      for (const a of data.advisor) { c.view.push({ type: "advisor", advice: a.advice }); renderItem({ type: "advisor", advice: a.advice }); }
-      c.view.push({ type: "assistant", text: data.text }); renderItem({ type: "assistant", text: data.text });
-      applyTokens(c, data.usage); renderTokens(); scrollDown(); save();
+      for (const m of data.append) c.data.apiMessages.push(m);
+      for (const a of data.advisor) { c.data.view.push({ type: "advisor", advice: a.advice }); renderItem({ type: "advisor", advice: a.advice }); }
+      c.data.view.push({ type: "assistant", text: data.text }); renderItem({ type: "assistant", text: data.text });
+      applyTokens(c, data.usage); renderTokens(); scrollDown(); await persist(c);
     } catch (e) {
       setTyping(false);
-      c.view.push({ type: "error", text: String(e) }); renderItem({ type: "error", text: String(e) }); scrollDown(); save();
+      c.data.view.push({ type: "error", text: String(e) }); renderItem({ type: "error", text: String(e) }); scrollDown(); await persist(c);
     } finally { sendBtn.disabled = false; input.focus(); }
   }
   function applyTokens(c, usage) {
     if (!usage) return;
-    if (usage.executor) { c.tokens.execIn += usage.executor.input_tokens || 0; c.tokens.execOut += usage.executor.output_tokens || 0; }
+    const t = c.data.tokens;
+    if (usage.executor) { t.execIn += usage.executor.input_tokens || 0; t.execOut += usage.executor.output_tokens || 0; }
     if (usage.advisor && (usage.advisor.input_tokens != null || usage.advisor.output_tokens != null)) {
-      c.tokens.advAvailable = true; c.tokens.advIn += usage.advisor.input_tokens || 0; c.tokens.advOut += usage.advisor.output_tokens || 0;
+      t.advAvailable = true; t.advIn += usage.advisor.input_tokens || 0; t.advOut += usage.advisor.output_tokens || 0;
     }
   }
 
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }
   async function logout() { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; }
 
-  // ---------- Inicialização ----------
   async function init() {
-    try {
-      const me = await fetch("/api/me").then(r => r.json());
-      USER = (me && me.user) ? me.user : "anon";
-    } catch (_) { USER = "anon"; }
-    STORAGE_KEY = "cs_conversations__" + USER;
-    document.getElementById("userLabel").textContent = USER === "anon" ? "Visitante" : USER;
-    load();
-    if (!conversations.length) newConv();
-    else { activeId = conversations[0].id; renderList(); renderChat(); }
+    let user = "anon";
+    try { const me = await fetch("/api/me").then(r => r.json()); if (me && me.user) user = me.user; } catch (_) {}
+    document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
+    conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
+    document.getElementById("hint").textContent = Store.mode === "remote"
+      ? "Histórico compartilhado entre os escritórios · consultas ao advisor aparecem em dourado."
+      : "Histórico salvo neste computador · consultas ao advisor aparecem em dourado.";
+    if (!conversations.length) { newConv(); }
+    else { await selectConv(conversations[0].id); }
     input.focus();
   }
 
   input.addEventListener("input", autosize);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   sendBtn.addEventListener("click", send);
-  document.getElementById("new").addEventListener("click", () => newConv());
+  document.getElementById("new").addEventListener("click", newConv);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("toggle").addEventListener("click", () => document.body.classList.toggle("collapsed"));
   init();
