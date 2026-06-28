@@ -3,9 +3,13 @@
 A chave da API fica somente no servidor (variável de ambiente ANTHROPIC_API_KEY)
 e nunca é exposta ao frontend. O endpoint /api/chat repassa o histórico da
 conversa para a API da Anthropic usando o padrão Executor + Advisor.
+
+Autenticação: login por usuário/senha (configurados via AUTH_USERS) com cookie
+de sessão assinado. Se AUTH_USERS estiver vazio, o site fica aberto (sem login).
 """
 
 import os
+import secrets
 from typing import Any
 
 # Carrega .env em desenvolvimento local; em produção (Render) as variáveis
@@ -18,9 +22,10 @@ except ImportError:  # pragma: no cover
     pass
 
 import anthropic
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
 
 # --- Configuração (ajustável por variáveis de ambiente) ---------------------
@@ -33,13 +38,37 @@ ADVISOR_MAX_TOKENS = int(os.environ.get("ADVISOR_MAX_TOKENS", "2048"))
 # Adicione o contexto do Promob (ou qualquer instrução) via SYSTEM_PROMPT.
 SYSTEM_PROMPT = (os.environ.get("SYSTEM_PROMPT") or "").strip()
 
+# --- Autenticação -----------------------------------------------------------
+# AUTH_USERS: "usuario1:senha1,usuario2:senha2"  (evite vírgula na senha).
+# Se vazio, a autenticação fica DESLIGADA (site aberto).
+SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 12)))  # 12h
+COOKIE_SECURE = (os.environ.get("COOKIE_SECURE", "true").lower() != "false")
+_serializer = URLSafeTimedSerializer(SECRET_KEY, salt="advisor-chat-session")
+
+
+def _parse_users(raw: str) -> dict[str, str]:
+    users: dict[str, str] = {}
+    for pair in (raw or "").split(","):
+        pair = pair.strip()
+        if not pair or ":" not in pair:
+            continue
+        u, p = pair.split(":", 1)
+        if u.strip():
+            users[u.strip()] = p
+    return users
+
+
+AUTH_USERS = _parse_users(os.environ.get("AUTH_USERS", ""))
+AUTH_ENABLED = bool(AUTH_USERS)
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
 
 # Lê ANTHROPIC_API_KEY do ambiente automaticamente.
 client = anthropic.Anthropic()
 
-app = FastAPI(title="Advisor Chat")
+app = FastAPI(title="Casa Sognatto · Advisor Chat")
 
 
 class ChatRequest(BaseModel):
@@ -47,7 +76,36 @@ class ChatRequest(BaseModel):
     messages: list[dict[str, Any]]
 
 
-# --- Helpers ----------------------------------------------------------------
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+# --- Sessão / autenticação --------------------------------------------------
+def current_user(request: Request) -> str | None:
+    """Retorna o usuário logado, ou None se não autenticado.
+
+    Quando a autenticação está desligada (AUTH_USERS vazio), todos passam.
+    """
+    if not AUTH_ENABLED:
+        return "anon"
+    token = request.cookies.get("session")
+    if not token:
+        return None
+    try:
+        return _serializer.loads(token, max_age=SESSION_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def require_user(request: Request) -> str:
+    user = current_user(request)
+    if user is None:
+        raise HTTPException(401, "Não autenticado.")
+    return user
+
+
+# --- Helpers de extração ----------------------------------------------------
 def _block_to_dict(block: Any) -> dict:
     if hasattr(block, "model_dump"):
         return block.model_dump()
@@ -85,7 +143,6 @@ def _extract(content_blocks) -> tuple[list[str], list[dict]]:
         if t == "text":
             text_parts.append(b.get("text", ""))
         elif t == "server_tool_use" and b.get("name") == "advisor":
-            # Pergunta que o executor fez ao advisor.
             advisor_items.append({"question": b.get("input") or {}, "advice": None})
         elif t in ("advisor_tool_result", "tool_result"):
             advice = _text_from_content(b.get("content"))
@@ -96,23 +153,23 @@ def _extract(content_blocks) -> tuple[list[str], list[dict]]:
     return text_parts, advisor_items
 
 
-def _advisor_usage(raw_usage: dict | None) -> dict | None:
-    """Tenta localizar a contagem de tokens do advisor no objeto usage.
+def _advisor_usage(iterations: list[dict] | None) -> dict | None:
+    """Soma os tokens do advisor a partir do array `usage.iterations`.
 
-    O formato exato do breakdown de tokens da advisor tool é beta; tentamos as
-    chaves mais prováveis e devolvemos None se nenhuma existir (o frontend
-    mostra "n/d" nesse caso). Verifique contra a saída real da API.
+    Cada item de `iterations` traz o tipo da chamada interna: `message` é o
+    executor e `advisor_message` é o advisor (Opus). Retorna None se o advisor
+    não foi consultado.
     """
-    if not raw_usage:
+    inp = out = 0
+    found = False
+    for it in iterations or []:
+        if it.get("type") == "advisor_message":
+            inp += it.get("input_tokens") or 0
+            out += it.get("output_tokens") or 0
+            found = True
+    if not found:
         return None
-    for key in ("advisor", "advisor_tool_use", "server_tool_use"):
-        v = raw_usage.get(key)
-        if isinstance(v, dict):
-            return {
-                "input_tokens": v.get("input_tokens"),
-                "output_tokens": v.get("output_tokens"),
-            }
-    return None
+    return {"input_tokens": inp, "output_tokens": out}
 
 
 def _api_error_detail(e: anthropic.APIStatusError) -> str:
@@ -124,9 +181,37 @@ def _api_error_detail(e: anthropic.APIStatusError) -> str:
     return getattr(e, "message", str(e))
 
 
-# --- Rotas ------------------------------------------------------------------
+# --- Rotas de autenticação --------------------------------------------------
+@app.post("/api/login")
+def login(body: LoginRequest):
+    expected = AUTH_USERS.get(body.username)
+    if not expected or not secrets.compare_digest(body.password, expected):
+        raise HTTPException(401, "Usuário ou senha inválidos.")
+    token = _serializer.dumps(body.username)
+    resp = JSONResponse({"ok": True, "user": body.username})
+    resp.set_cookie(
+        "session", token, httponly=True, secure=COOKIE_SECURE,
+        samesite="lax", max_age=SESSION_MAX_AGE,
+    )
+    return resp
+
+
+@app.post("/api/logout")
+def logout():
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("session")
+    return resp
+
+
+@app.get("/api/me")
+def me(request: Request):
+    return {"user": current_user(request), "auth_enabled": AUTH_ENABLED}
+
+
+# --- Rota principal do chat -------------------------------------------------
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, request: Request):
+    require_user(request)
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(500, "ANTHROPIC_API_KEY não está configurada no servidor.")
 
@@ -134,7 +219,7 @@ def chat(req: ChatRequest):
     appended: list[dict] = []
     all_text: list[str] = []
     all_advisor: list[dict] = []
-    usage = {"input_tokens": 0, "output_tokens": 0, "raw": {}}
+    usage = {"input_tokens": 0, "output_tokens": 0, "iterations": []}
 
     try:
         # A advisor tool roda um loop server-side; em casos longos a API pode
@@ -172,7 +257,7 @@ def chat(req: ChatRequest):
             u = response.usage.model_dump() if response.usage else {}
             usage["input_tokens"] += u.get("input_tokens") or 0
             usage["output_tokens"] += u.get("output_tokens") or 0
-            usage["raw"] = u
+            usage["iterations"].extend(u.get("iterations") or [])
 
             if response.stop_reason != "pause_turn":
                 break
@@ -192,22 +277,33 @@ def chat(req: ChatRequest):
                 "input_tokens": usage["input_tokens"],
                 "output_tokens": usage["output_tokens"],
             },
-            "advisor": _advisor_usage(usage.get("raw")),
-            # `raw` exposto temporariamente para inspecionar o formato real do
-            # objeto usage da advisor tool (beta). Pode ser removido depois.
-            "raw": usage.get("raw"),
+            "advisor": _advisor_usage(usage.get("iterations")),
+            # Quantidade de consultas ao advisor neste turno.
+            "advisor_calls": len([a for a in all_advisor if a.get("advice")]),
         },
     }
 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY"))}
+    return {
+        "ok": True,
+        "api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "auth_enabled": AUTH_ENABLED,
+    }
 
 
+# --- Páginas ----------------------------------------------------------------
 @app.get("/")
-def index():
+def index(request: Request):
+    if current_user(request) is None:
+        return FileResponse(os.path.join(STATIC_DIR, "login.html"))
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Casa Sognatto · Entrar</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f242e;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --border: #2a2f3a;
+    --brand: #c9a24b;          /* cor da marca — troque aqui */
+    --brand-soft: #d9b873;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #1c2230 0%, var(--bg) 60%);
+    color: var(--text);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card {
+    width: 100%; max-width: 380px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+  }
+  .brand { text-align: center; margin-bottom: 26px; }
+  .brand img { max-height: 56px; max-width: 200px; margin-bottom: 10px; }
+  .brand .name {
+    font-size: 22px; font-weight: 700; letter-spacing: .02em;
+    color: var(--brand-soft);
+  }
+  .brand .sub { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  label { display: block; font-size: 12.5px; color: var(--muted); margin: 14px 0 6px; }
+  input {
+    width: 100%; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 11px 12px; font: inherit; font-size: 15px;
+  }
+  input:focus { outline: none; border-color: var(--brand); }
+  button {
+    width: 100%; margin-top: 20px; padding: 12px;
+    background: var(--brand); color: #1a1405; border: none;
+    border-radius: 10px; font-size: 15px; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: var(--brand-soft); }
+  button:disabled { opacity: .6; cursor: default; }
+  .error {
+    margin-top: 14px; font-size: 13px; color: #ff8a8a;
+    text-align: center; min-height: 18px;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">
+      <img src="/static/logo.png" alt="" onerror="this.style.display='none'" />
+      <div class="name">Casa Sognatto</div>
+      <div class="sub">Assistente · Executor + Advisor</div>
+    </div>
+
+    <label for="user">Usuário</label>
+    <input id="user" type="text" autocomplete="username" autofocus />
+
+    <label for="pass">Senha</label>
+    <input id="pass" type="password" autocomplete="current-password" />
+
+    <button id="btn">Entrar</button>
+    <div class="error" id="err"></div>
+  </div>
+
+<script>
+  const user = document.getElementById("user");
+  const pass = document.getElementById("pass");
+  const btn = document.getElementById("btn");
+  const err = document.getElementById("err");
+
+  async function login() {
+    err.textContent = "";
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: user.value, password: pass.value }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+      } else {
+        let msg = "Não foi possível entrar.";
+        try { msg = (await res.json()).detail || msg; } catch (_) {}
+        err.textContent = msg;
+      }
+    } catch (e) {
+      err.textContent = "Erro de conexão. Tente novamente.";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener("click", login);
+  [user, pass].forEach((el) =>
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") login(); })
+  );
+</script>
+</body>
+</html>
