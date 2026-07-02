@@ -10,3 +10,17 @@ services:
         sync: false   # defina no painel do Render (Secret)
       - key: SYSTEM_PROMPT
         sync: false   # opcional — contexto do Promob, etc.
+      - key: DATABASE_URL
+        sync: false   # Postgres (Neon/Supabase/Render) — necessário para login e conversas
+      - key: SEED_DIRETOR_PASSWORD
+        sync: false   # senha inicial de "Davi Nogueira" — só usada na 1ª vez (tabela users vazia)
+      - key: SEED_MEMBER_PASSWORD
+        sync: false   # opcional — senha padrão da equipe; se ausente usa "C@s@1945"
+      - key: VIDEO_ENGINE
+        value: stub   # trocar para "luma" ou "veo" quando as chaves abaixo estiverem configuradas
+      - key: LUMA_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: PUBLIC_BASE_URL
+        value: https://chat.casasognatto.com.br

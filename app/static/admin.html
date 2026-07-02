@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Casa Sognatto · Painel do Diretor</title>
+<style>
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Light.otf') format('opentype'); font-weight:300; font-display:swap; }
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sackers'; src:url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display:swap; }
+  @font-face { font-family:'NeueMontreal'; src:url('/static/fonts/PPNeueMontreal.ttf') format('truetype'); font-display:swap; }
+
+  :root {
+    --green-950: #0b1a10; --green-900: #0f2114; --green-800: #152C1C;
+    --green-700: #1d3a27; --green-600: #274a34;
+    --cream: #ece9e1; --muted: #93a597; --gold: #c2a06a; --gold-soft: #d8bd8b;
+    --border: #2a4434;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: 'NeueMontreal', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); min-height: 100vh; }
+
+  header { padding: 14px 22px; background: var(--green-900); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .h-left { display: flex; align-items: center; gap: 10px; }
+  .h-left .key { color: var(--gold); }
+  .h-title { font-family:'Benjamin'; font-size: 17px; }
+  .h-right { display: flex; align-items: center; gap: 10px; }
+  a.link, button.link { color: var(--muted); text-decoration: none; font-size: 12.5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-family: inherit; }
+  a.link:hover, button.link:hover { border-color: var(--gold); color: var(--gold); }
+
+  main { max-width: 960px; margin: 0 auto; padding: 26px 20px 60px; display: flex; flex-direction: column; gap: 26px; }
+  section { background: var(--green-900); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; }
+  h2 { font-family:'Sackers'; font-size: 12px; letter-spacing:.14em; text-transform: uppercase; color: var(--gold); margin: 0 0 16px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; }
+  .tag.diretor { background: var(--gold); color: #1c1408; }
+  .tag.membro { background: var(--green-700); color: var(--cream); }
+  .tag.inactive { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+
+  .form-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  input, select { background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 13.5px; }
+  input:focus, select:focus { outline: none; border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1c1408; border: none; border-radius: 8px; padding: 9px 16px; font-family:'Sackers'; font-size: 11.5px; letter-spacing:.1em; text-transform: uppercase; cursor: pointer; }
+  button.primary:hover { background: var(--gold-soft); }
+  button.danger { background: transparent; border: 1px solid #a55; color: #ff9d9d; border-radius: 8px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; }
+  button.danger:hover { background: rgba(255,157,157,.1); }
+
+  .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .search-row input { flex: 1; }
+  .log-list { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; font-size: 13px; }
+  .log-line { padding: 8px 10px; border-radius: 8px; background: var(--green-800); border: 1px solid var(--border); }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="h-left">
+    <svg class="key" width="16" height="32" viewBox="0 0 60 120" fill="none">
+      <g stroke="currentColor" stroke-width="6"><circle cx="30" cy="20" r="10"/><circle cx="18" cy="37" r="10"/><circle cx="42" cy="37" r="10"/></g>
+      <rect x="26.5" y="50" width="7" height="58" rx="1.5" fill="currentColor"/>
+      <rect x="33.5" y="92" width="11" height="6" fill="currentColor"/>
+      <rect x="33.5" y="102" width="8" height="6" fill="currentColor"/>
+    </svg>
+    <div class="h-title">Painel do Diretor</div>
+  </div>
+  <div class="h-right">
+    <a class="link" href="/">← Chat</a>
+    <button class="link" id="logout">Sair</button>
+  </div>
+</header>
+
+<main>
+  <section>
+    <h2>Usuários</h2>
+    <table id="usersTable">
+      <thead><tr><th>Nome</th><th>Cargo</th><th>Papel</th><th>Status</th><th></th></tr></thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+    <div class="form-row">
+      <input id="newUsername" placeholder="Nome completo" />
+      <input id="newCargo" placeholder="Cargo (ex: Arquiteta)" />
+      <input id="newPassword" placeholder="Senha" type="text" />
+      <select id="newRole">
+        <option value="membro">Membro</option>
+        <option value="diretor">Diretor</option>
+      </select>
+      <button class="primary" id="addUser">Adicionar</button>
+    </div>
+    <div class="muted" id="userMsg" style="margin-top:10px;"></div>
+  </section>
+
+  <section>
+    <h2>Todas as conversas</h2>
+    <table id="convTable">
+      <thead><tr><th>Título</th><th>Criada por</th><th>Atualizada</th></tr></thead>
+      <tbody id="convBody"></tbody>
+    </table>
+    <div class="empty" id="convEmpty" style="display:none;">Nenhuma conversa ainda.</div>
+  </section>
+
+  <section>
+    <h2>Log de auditoria</h2>
+    <div class="search-row">
+      <input id="logSearch" placeholder="Buscar por nome do cliente/conversa…" />
+      <button class="primary" id="logSearchBtn">Buscar</button>
+    </div>
+    <div class="log-list" id="logList"></div>
+    <div class="empty" id="logEmpty" style="display:none;">Nenhum registro encontrado.</div>
+  </section>
+</main>
+
+<script>
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    if (res.status === 401) { window.location.href = "/login"; throw new Error("401"); }
+    if (res.status === 403) { window.location.href = "/"; throw new Error("403"); }
+    if (!res.ok) { let d = res.statusText; try { d = (await res.json()).detail || d; } catch (_) {} throw new Error(d); }
+    return res.status === 204 ? null : res.json();
+  }
+
+  async function loadUsers() {
+    const users = await api("/api/admin/users");
+    const body = document.getElementById("usersBody");
+    body.innerHTML = "";
+    for (const u of users) {
+      const tr = document.createElement("tr");
+      const statusTag = u.active ? "" : '<span class="tag inactive">inativo</span>';
+      tr.innerHTML =
+        `<td>${u.username}</td><td>${u.cargo || "—"}</td>` +
+        `<td><span class="tag ${u.role}">${u.role}</span></td>` +
+        `<td>${statusTag || "ativo"}</td><td></td>`;
+      const tdBtn = tr.lastElementChild;
+      if (u.active) {
+        const btn = document.createElement("button");
+        btn.className = "danger"; btn.textContent = "Desativar";
+        btn.addEventListener("click", async () => {
+          if (!confirm(`Desativar ${u.username}? O histórico dela é mantido.`)) return;
+          await api("/api/admin/users/" + encodeURIComponent(u.username), { method: "DELETE" });
+          loadUsers();
+        });
+        tdBtn.appendChild(btn);
+      }
+      body.appendChild(tr);
+    }
+  }
+
+  document.getElementById("addUser").addEventListener("click", async () => {
+    const msg = document.getElementById("userMsg");
+    msg.textContent = "";
+    const username = document.getElementById("newUsername").value.trim();
+    const cargo = document.getElementById("newCargo").value.trim();
+    const password = document.getElementById("newPassword").value;
+    const role = document.getElementById("newRole").value;
+    if (!username || !password) { msg.textContent = "Preencha nome e senha."; return; }
+    try {
+      await api("/api/admin/users", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password, role, cargo }),
+      });
+      document.getElementById("newUsername").value = "";
+      document.getElementById("newCargo").value = "";
+      document.getElementById("newPassword").value = "";
+      loadUsers();
+    } catch (e) { msg.textContent = "Erro: " + e.message; }
+  });
+
+  async function loadConversations() {
+    const convs = await api("/api/admin/conversations");
+    const body = document.getElementById("convBody");
+    body.innerHTML = "";
+    document.getElementById("convEmpty").style.display = convs.length ? "none" : "block";
+    for (const c of convs) {
+      const tr = document.createElement("tr");
+      const date = new Date(c.updatedAt * 1000).toLocaleString("pt-BR");
+      tr.innerHTML = `<td>${c.title}</td><td>${c.owner}</td><td>${date}</td>`;
+      body.appendChild(tr);
+    }
+  }
+
+  async function loadLog(q) {
+    const rows = await api("/api/admin/activity-log" + (q ? "?q=" + encodeURIComponent(q) : ""));
+    const list = document.getElementById("logList");
+    list.innerHTML = "";
+    document.getElementById("logEmpty").style.display = rows.length ? "none" : "block";
+    for (const r of rows) {
+      const div = document.createElement("div");
+      div.className = "log-line"; div.textContent = r.text;
+      list.appendChild(div);
+    }
+  }
+
+  document.getElementById("logSearchBtn").addEventListener("click", () => loadLog(document.getElementById("logSearch").value.trim()));
+  document.getElementById("logSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadLog(e.target.value.trim()); });
+  document.getElementById("logout").addEventListener("click", async () => { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; });
+
+  loadUsers();
+  loadConversations();
+  loadLog();
+</script>
+</body>
+</html>
