@@ -136,6 +136,8 @@
           <option value="a">Modo A</option>
           <option value="b">Modo B</option>
         </select>
+        <input type="file" id="imageFile" accept="image/*" style="display:none;" />
+        <button class="icon-btn" id="imageBtn" title="Gerar render a partir de uma imagem">🖼️</button>
         <input type="file" id="videoFile" accept="image/*" style="display:none;" />
         <button class="icon-btn" id="videoBtn" title="Gerar vídeo a partir de uma imagem">🎬</button>
         <button id="send">Enviar</button>
@@ -270,6 +272,11 @@
       const card = document.createElement("div"); card.className = "video-card"; card.id = "video-" + item.jobId;
       renderVideoCardBody(card, item);
       r.appendChild(card); chat.appendChild(r);
+    } else if (item.type === "image") {
+      const r = document.createElement("div"); r.className = "msg assistant";
+      const card = document.createElement("div"); card.className = "video-card"; card.id = "image-" + item.jobId;
+      renderImageCardBody(card, item);
+      r.appendChild(card); chat.appendChild(r);
     }
   }
   function renderVideoCardBody(card, item) {
@@ -285,6 +292,22 @@
       card.appendChild(s);
     } else {
       const s = document.createElement("div"); s.className = "status"; s.textContent = "Gerando vídeo… isso pode levar alguns minutos.";
+      card.appendChild(s);
+    }
+  }
+  function renderImageCardBody(card, item) {
+    card.innerHTML = "";
+    if (item.status === "done") {
+      const img = document.createElement("img");
+      img.src = "/api/image/file/" + item.jobId;
+      const a = document.createElement("a");
+      a.className = "dl"; a.href = "/api/image/file/" + item.jobId; a.download = "render.png"; a.textContent = "Baixar imagem";
+      card.appendChild(img); card.appendChild(a);
+    } else if (item.status === "error") {
+      const s = document.createElement("div"); s.className = "status"; s.textContent = "⚠️ " + (item.error || "Falha ao gerar a imagem, tente novamente.");
+      card.appendChild(s);
+    } else {
+      const s = document.createElement("div"); s.className = "status"; s.textContent = "Gerando render…";
       card.appendChild(s);
     }
   }
@@ -304,6 +327,8 @@
       for (const item of c.data.view) {
         if (item.type === "video" && item.jobId && (item.status === "queued" || item.status === "processing")) {
           pollVideoJob(item.jobId, item, c);
+        } else if (item.type === "image" && item.jobId && (item.status === "queued" || item.status === "processing")) {
+          pollImageJob(item.jobId, item, c);
         }
       }
     }
@@ -448,6 +473,66 @@
     const file = e.target.files[0];
     e.target.value = "";
     if (file) startVideoJob(file);
+  });
+
+  // ---------- Geração de imagem (ícone no composer) ----------
+  async function startImageJob(file) {
+    let c = active(); if (!c) { newConv(); c = active(); }
+    await ensureData(c);
+    const prompt = input.value.trim();
+
+    const item = { type: "image", jobId: null, status: "queued" };
+    c.data.view.push(item);
+    const r = document.createElement("div"); r.className = "msg assistant";
+    const card = document.createElement("div"); card.className = "video-card";
+    renderImageCardBody(card, item);
+    r.appendChild(card); chat.appendChild(r); scrollDown();
+
+    const form = new FormData();
+    form.append("image", file);
+    form.append("prompt", prompt);
+    form.append("conversation_id", c.id);
+
+    try {
+      const res = await fetch("/api/image/jobs", { method: "POST", body: form });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { item.status = "error"; item.error = "Não foi possível iniciar a geração."; }
+      else {
+        const data = await res.json();
+        item.jobId = data.id; item.status = data.status || "queued";
+      }
+    } catch (e) {
+      item.status = "error"; item.error = "Erro de conexão.";
+    }
+    card.id = "image-" + item.jobId;
+    renderImageCardBody(card, item);
+    await persist(c);
+    if (item.jobId && (item.status === "queued" || item.status === "processing")) pollImageJob(item.jobId, item, c);
+  }
+
+  function pollImageJob(jobId, item, c) {
+    const tick = async () => {
+      try {
+        const res = await fetch("/api/image/jobs/" + jobId);
+        if (res.ok) {
+          const data = await res.json();
+          item.status = data.status;
+          item.error = data.error;
+          const card = document.getElementById("image-" + jobId);
+          if (card) renderImageCardBody(card, item);
+          if (data.status === "done" || data.status === "error") { await persist(c); return; }
+        }
+      } catch (_) {}
+      setTimeout(tick, 2500);
+    };
+    setTimeout(tick, 2500);
+  }
+
+  document.getElementById("imageBtn").addEventListener("click", () => document.getElementById("imageFile").click());
+  document.getElementById("imageFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    e.target.value = "";
+    if (file) startImageJob(file);
   });
 
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }

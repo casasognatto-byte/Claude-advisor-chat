@@ -258,11 +258,14 @@ _init_users_db()
 _init_activity_log_db()
 
 from app.admin import router as admin_router  # noqa: E402 (após _init_* por clareza)
+from app.image import init_image_db, router as image_router  # noqa: E402
 from app.video import init_video_db, router as video_router  # noqa: E402
 
 app.include_router(admin_router)
 app.include_router(video_router)
+app.include_router(image_router)
 init_video_db()
+init_image_db()
 
 
 class ChatRequest(BaseModel):

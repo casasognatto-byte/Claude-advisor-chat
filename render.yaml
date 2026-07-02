@@ -24,3 +24,5 @@ services:
         sync: false
       - key: PUBLIC_BASE_URL
         value: https://chat.casasognatto.com.br
+      - key: IMAGE_ENGINE
+        value: stub   # trocar para "nanobanana" quando GOOGLE_API_KEY estiver configurada
