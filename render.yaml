@@ -15,17 +15,17 @@ services:
       - key: SEED_DIRETOR_PASSWORD
         sync: false   # senha inicial do diretor (Davi); os demais definem a própria via convite
       - key: EMAIL_BACKEND
-        value: smtp   # KingHost configurado; deixe "console" se quiser suspender envios
+        value: smtp   # KingHost testado e confirmado; deixe "console" se quiser suspender envios
       - key: EMAIL_FROM
-        value: Casa Sognatto <adm@casasognatto.com.br>
+        value: Casa Sognatto <naoresponda@casasognatto.com.br>
       - key: SMTP_HOST
         value: smtp.kinghost.net
       - key: SMTP_PORT
         value: "465"
       - key: SMTP_USER
-        value: adm@casasognatto.com.br
+        value: naoresponda@casasognatto.com.br
       - key: SMTP_PASSWORD
-        sync: false   # SEGREDO — defina no painel do Render, nunca versionar
+        sync: false   # SEGREDO — senha da caixa naoresponda@; defina no painel do Render, nunca versionar
       - key: VIDEO_ENGINE
         value: stub   # trocar para "luma" ou "veo" quando as chaves abaixo estiverem configuradas
       - key: LUMA_API_KEY
