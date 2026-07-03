@@ -78,20 +78,20 @@
   <section>
     <h2>Usuários</h2>
     <table id="usersTable">
-      <thead><tr><th>Nome</th><th>Cargo</th><th>Papel</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Nome</th><th>E-mail</th><th>Cargo</th><th>Papel</th><th>Status</th><th></th></tr></thead>
       <tbody id="usersBody"></tbody>
     </table>
     <div class="form-row">
-      <input id="newUsername" placeholder="Nome completo" />
-      <input id="newCargo" placeholder="Cargo (ex: Arquiteta)" />
-      <input id="newPassword" placeholder="Senha" type="text" />
+      <input id="newName" placeholder="Nome completo" />
+      <input id="newEmail" placeholder="E-mail" type="email" />
+      <input id="newCargo" placeholder="Cargo (ex: Arquiteta Consultora)" />
       <select id="newRole">
         <option value="membro">Membro</option>
         <option value="diretor">Diretor</option>
       </select>
-      <button class="primary" id="addUser">Adicionar</button>
+      <button class="primary" id="addUser">Adicionar e convidar</button>
     </div>
-    <div class="muted" id="userMsg" style="margin-top:10px;"></div>
+    <div class="muted" id="userMsg" style="margin-top:10px;">Ao adicionar, um e-mail de convite é enviado para a pessoa confirmar o cadastro e definir a senha.</div>
   </section>
 
   <section>
@@ -129,15 +129,28 @@
     body.innerHTML = "";
     for (const u of users) {
       const tr = document.createElement("tr");
-      const statusTag = u.active ? "" : '<span class="tag inactive">inativo</span>';
+      let statusTag;
+      if (!u.active) statusTag = '<span class="tag inactive">inativo</span>';
+      else if (u.emailConfirmed) statusTag = '<span class="tag membro">ativo</span>';
+      else statusTag = '<span class="tag inactive">pendente</span>';
       tr.innerHTML =
-        `<td>${u.username}</td><td>${u.cargo || "—"}</td>` +
+        `<td>${u.username}</td><td>${u.email || "—"}</td><td>${u.cargo || "—"}</td>` +
         `<td><span class="tag ${u.role}">${u.role}</span></td>` +
-        `<td>${statusTag || "ativo"}</td><td></td>`;
+        `<td>${statusTag}</td><td></td>`;
       const tdBtn = tr.lastElementChild;
+      if (u.active && !u.emailConfirmed) {
+        const rb = document.createElement("button");
+        rb.className = "danger"; rb.style.borderColor = "var(--gold)"; rb.style.color = "var(--gold)";
+        rb.textContent = "Reenviar convite";
+        rb.addEventListener("click", async () => {
+          await api("/api/admin/users/" + encodeURIComponent(u.username) + "/resend-invite", { method: "POST" });
+          alert("Convite reenviado para " + u.email);
+        });
+        tdBtn.appendChild(rb);
+      }
       if (u.active) {
         const btn = document.createElement("button");
-        btn.className = "danger"; btn.textContent = "Desativar";
+        btn.className = "danger"; btn.textContent = "Desativar"; btn.style.marginLeft = "6px";
         btn.addEventListener("click", async () => {
           if (!confirm(`Desativar ${u.username}? O histórico dela é mantido.`)) return;
           await api("/api/admin/users/" + encodeURIComponent(u.username), { method: "DELETE" });
@@ -151,20 +164,20 @@
 
   document.getElementById("addUser").addEventListener("click", async () => {
     const msg = document.getElementById("userMsg");
-    msg.textContent = "";
-    const username = document.getElementById("newUsername").value.trim();
+    const name = document.getElementById("newName").value.trim();
+    const email = document.getElementById("newEmail").value.trim();
     const cargo = document.getElementById("newCargo").value.trim();
-    const password = document.getElementById("newPassword").value;
     const role = document.getElementById("newRole").value;
-    if (!username || !password) { msg.textContent = "Preencha nome e senha."; return; }
+    if (!name || !email) { msg.textContent = "Preencha nome e e-mail."; return; }
     try {
       await api("/api/admin/users", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role, cargo }),
+        body: JSON.stringify({ email, name, role, cargo }),
       });
-      document.getElementById("newUsername").value = "";
+      document.getElementById("newName").value = "";
+      document.getElementById("newEmail").value = "";
       document.getElementById("newCargo").value = "";
-      document.getElementById("newPassword").value = "";
+      msg.textContent = "Usuário criado e convite enviado para " + email + ".";
       loadUsers();
     } catch (e) { msg.textContent = "Erro: " + e.message; }
   });

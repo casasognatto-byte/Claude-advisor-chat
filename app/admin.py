@@ -14,10 +14,20 @@ router = APIRouter(prefix="/api/admin")
 
 
 class UserCreate(BaseModel):
-    username: str
-    password: str
+    email: str
+    name: str
     role: str = "membro"
     cargo: str | None = None
+
+
+def _send_invite(username: str, email: str) -> None:
+    """Gera token de confirmação e dispara o convite por e-mail."""
+    from app.main import CONFIRM_TTL, _create_auth_token, _public_base_url
+    from app.email_send import send_invite_email
+
+    token = _create_auth_token(username, "confirm", CONFIRM_TTL)
+    link = f"{_public_base_url()}/definir-senha?token={token}"
+    send_invite_email(email, username, link)
 
 
 @router.get("/users")
@@ -28,16 +38,19 @@ def list_users(request: Request):
     _require_db()
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT username, role, cargo, active, created_at FROM users ORDER BY created_at"
+            "SELECT username, email, role, cargo, active, email_confirmed, created_at "
+            "FROM users ORDER BY created_at"
         )
         rows = cur.fetchall()
     return [
         {
             "username": r[0],
-            "role": r[1],
-            "cargo": r[2],
-            "active": r[3],
-            "createdAt": r[4].isoformat(),
+            "email": r[1],
+            "role": r[2],
+            "cargo": r[3],
+            "active": r[4],
+            "emailConfirmed": r[5],
+            "createdAt": r[6].isoformat(),
         }
         for r in rows
     ]
@@ -45,22 +58,46 @@ def list_users(request: Request):
 
 @router.post("/users")
 def create_user(body: UserCreate, request: Request):
-    from app.main import _db, _require_db, bcrypt_hasher, require_admin
+    from app.main import _db, _require_db, require_admin
 
     require_admin(request)
     _require_db()
-    if not body.username.strip() or not body.password:
-        raise HTTPException(400, "Usuário e senha são obrigatórios.")
+    email = body.email.strip().lower()
+    name = body.name.strip()
+    if not email or "@" not in email or not name:
+        raise HTTPException(400, "E-mail válido e nome são obrigatórios.")
     role = body.role if body.role in ("diretor", "membro") else "membro"
     with _db() as conn, conn.cursor() as cur:
+        # E-mail já em uso por outra pessoa?
         cur.execute(
-            "INSERT INTO users (username, password_hash, role, cargo) "
-            "VALUES (%s, %s, %s, %s) "
-            "ON CONFLICT (username) DO UPDATE SET "
-            "password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, "
-            "cargo = EXCLUDED.cargo, active = true",
-            (body.username.strip(), bcrypt_hasher.hash(body.password), role, body.cargo),
+            "SELECT username FROM users WHERE lower(email) = %s AND username <> %s",
+            (email, name),
         )
+        if cur.fetchone():
+            raise HTTPException(409, "Já existe um usuário com este e-mail.")
+        cur.execute(
+            "INSERT INTO users (username, email, role, cargo, active, email_confirmed) "
+            "VALUES (%s, %s, %s, %s, true, false) "
+            "ON CONFLICT (username) DO UPDATE SET "
+            "email = EXCLUDED.email, role = EXCLUDED.role, cargo = EXCLUDED.cargo, active = true",
+            (name, email, role, body.cargo),
+        )
+    _send_invite(name, email)
+    return {"ok": True}
+
+
+@router.post("/users/{username}/resend-invite")
+def resend_invite(username: str, request: Request):
+    from app.main import _db, _require_db, require_admin
+
+    require_admin(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT email FROM users WHERE username = %s AND active", (username,))
+        row = cur.fetchone()
+    if not row or not row[0]:
+        raise HTTPException(404, "Usuário não encontrado ou sem e-mail.")
+    _send_invite(username, row[0])
     return {"ok": True}
 
 

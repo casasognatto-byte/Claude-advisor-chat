@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Casa Sognatto · Definir senha</title>
+<style>
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-weight:400; font-display:swap; }
+  @font-face { font-family:'Sackers'; src:url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display:swap; }
+  @font-face { font-family:'NeueMontreal'; src:url('/static/fonts/PPNeueMontreal.ttf') format('truetype'); font-display:swap; }
+  :root { --green-800:#152C1C; --green-900:#0f2114; --cream:#ece9e1; --muted:#93a597; --gold:#c2a06a; --gold-soft:#d8bd8b; --border:#2a4434; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; font-family:'NeueMontreal',system-ui,sans-serif; background:radial-gradient(1200px 700px at 50% -15%,#1c3a26 0%,var(--green-800) 55%,var(--green-900) 100%); color:var(--cream); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { width:100%; max-width:380px; background:rgba(29,58,39,.55); border:1px solid var(--border); border-radius:16px; padding:36px 30px; }
+  .brand { text-align:center; margin-bottom:26px; }
+  .brand .casa { font-family:'Sackers'; font-size:12px; letter-spacing:.5em; }
+  .brand .sognatto { font-family:'Benjamin'; font-size:32px; }
+  h1 { font-family:'Benjamin'; font-weight:400; font-size:18px; text-align:center; margin:0 0 6px; }
+  p.sub { font-size:13px; color:var(--muted); text-align:center; margin:0 0 20px; line-height:1.5; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; }
+  input { width:100%; background:rgba(15,33,20,.6); color:var(--cream); border:1px solid var(--border); border-radius:10px; padding:11px 12px; font:inherit; font-size:15px; }
+  input:focus { outline:none; border-color:var(--gold); }
+  button { width:100%; margin-top:22px; padding:12px; background:var(--gold); color:#1c1408; border:none; border-radius:10px; font-family:'Sackers'; font-size:12px; letter-spacing:.18em; text-transform:uppercase; cursor:pointer; }
+  button:hover { background:var(--gold-soft); } button:disabled { opacity:.6; }
+  .msg { margin-top:16px; font-size:13px; text-align:center; min-height:18px; line-height:1.5; }
+  .msg.ok { color:var(--gold-soft); } .msg.err { color:#ff9d9d; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><div class="casa">CASA</div><div class="sognatto">SOGNATTO</div></div>
+    <h1>Definir sua senha</h1>
+    <p class="sub">Escolha uma senha para acessar a plataforma (mínimo 8 caracteres).</p>
+    <label for="p1">Nova senha</label>
+    <input id="p1" type="password" autocomplete="new-password" autofocus />
+    <label for="p2">Confirme a senha</label>
+    <input id="p2" type="password" autocomplete="new-password" />
+    <button id="btn">Salvar senha</button>
+    <div class="msg" id="msg"></div>
+  </div>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get("token") || "";
+  const p1 = document.getElementById("p1");
+  const p2 = document.getElementById("p2");
+  const btn = document.getElementById("btn");
+  const msg = document.getElementById("msg");
+
+  if (!token) {
+    msg.className = "msg err";
+    msg.textContent = "Link inválido. Solicite um novo pelo 'Esqueci minha senha'.";
+    btn.disabled = true;
+  }
+
+  async function submit() {
+    msg.className = "msg"; msg.textContent = "";
+    if (p1.value.length < 8) { msg.className = "msg err"; msg.textContent = "A senha deve ter pelo menos 8 caracteres."; return; }
+    if (p1.value !== p2.value) { msg.className = "msg err"; msg.textContent = "As senhas não coincidem."; return; }
+    btn.disabled = true;
+    try {
+      const res = await fetch("/api/auth/set-password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password: p1.value }),
+      });
+      if (res.ok) {
+        msg.className = "msg ok";
+        msg.textContent = "Senha definida! Redirecionando para o login…";
+        setTimeout(() => { window.location.href = "/login"; }, 1800);
+      } else {
+        let m = "Não foi possível salvar."; try { m = (await res.json()).detail || m; } catch (_) {}
+        msg.className = "msg err"; msg.textContent = m; btn.disabled = false;
+      }
+    } catch (e) {
+      msg.className = "msg err"; msg.textContent = "Erro de conexão. Tente novamente."; btn.disabled = false;
+    }
+  }
+  btn.addEventListener("click", submit);
+  [p1, p2].forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); }));
+</script>
+</body>
+</html>

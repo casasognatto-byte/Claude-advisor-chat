@@ -13,9 +13,19 @@ services:
       - key: DATABASE_URL
         sync: false   # Postgres (Neon/Supabase/Render) — necessário para login e conversas
       - key: SEED_DIRETOR_PASSWORD
-        sync: false   # senha inicial de "Davi Nogueira" — só usada na 1ª vez (tabela users vazia)
-      - key: SEED_MEMBER_PASSWORD
-        sync: false   # opcional — senha padrão da equipe; se ausente usa "C@s@1945"
+        sync: false   # senha inicial do diretor (Davi); os demais definem a própria via convite
+      - key: EMAIL_BACKEND
+        value: console   # trocar para "smtp" quando as credenciais SMTP estiverem configuradas
+      - key: EMAIL_FROM
+        value: Casa Sognatto <nao-responder@casasognatto.com.br>
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
       - key: VIDEO_ENGINE
         value: stub   # trocar para "luma" ou "veo" quando as chaves abaixo estiverem configuradas
       - key: LUMA_API_KEY

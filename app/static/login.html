@@ -71,6 +71,8 @@
   button:hover { background: var(--gold-soft); }
   button:disabled { opacity: .6; cursor: default; }
   .error { margin-top: 14px; font-size: 13px; color: #ff9d9d; text-align: center; min-height: 18px; }
+  .forgot { display: block; text-align: center; margin-top: 16px; font-size: 12.5px; color: var(--muted); text-decoration: none; }
+  .forgot:hover { color: var(--gold); }
 </style>
 </head>
 <body>
@@ -91,12 +93,13 @@
       </div>
     </div>
 
-    <label for="user">Usuário</label>
-    <input id="user" type="text" autocomplete="username" autofocus />
+    <label for="user">E-mail</label>
+    <input id="user" type="email" autocomplete="username" autofocus placeholder="voce@casasognatto.com.br" />
     <label for="pass">Senha</label>
     <input id="pass" type="password" autocomplete="current-password" />
     <button id="btn">Entrar</button>
     <div class="error" id="err"></div>
+    <a class="forgot" href="/forgot">Esqueci minha senha</a>
   </div>
 
 <script>
@@ -109,7 +112,7 @@
     try {
       const res = await fetch("/api/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: user.value, password: pass.value }),
+        body: JSON.stringify({ email: user.value, password: pass.value }),
       });
       if (res.ok) { window.location.href = "/"; }
       else {

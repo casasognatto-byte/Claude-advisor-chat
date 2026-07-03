@@ -92,13 +92,19 @@ COOKIE_SECURE = (os.environ.get("COOKIE_SECURE", "true").lower() != "false")
 _serializer = URLSafeTimedSerializer(SECRET_KEY, salt="advisor-chat-session")
 AUTH_ENABLED = True
 
-# Seed inicial de usuários (só roda se a tabela `users` estiver vazia).
-SEED_DIRETOR_USERNAME = "Davi Nogueira"
-SEED_MEMBERS = [
-    ("Taynara Leandro", "Gerente"),
-    ("Júlia Mendes", "Arquiteta"),
-    ("Guilherme Orth", "Arquiteto"),
+# Quadro fixo de usuários da Casa Sognatto (login por e-mail). Aplicado de forma
+# idempotente a cada boot: garante e-mail/papel/cargo, sem sobrescrever senha ou
+# confirmação de quem já ativou a conta. O diretor (Davi) já entra confirmado com
+# senha (SEED_DIRETOR_PASSWORD); os demais entram PENDENTES — precisam confirmar
+# o e-mail e definir a própria senha pelo link de convite.
+ROSTER = [
+    {"email": "davinogueira@casasognatto.com.br", "name": "Davi Nogueira", "role": "diretor", "cargo": "Diretor"},
+    {"email": "taynaraleandro@casasognatto.com.br", "name": "Taynara Leandro", "role": "membro", "cargo": "Gerente Comercial"},
+    {"email": "juliamendes@casasognatto.com.br", "name": "Júlia Mendes", "role": "membro", "cargo": "Arquiteta Consultora"},
+    {"email": "guilhermeorth@casasognatto.com.br", "name": "Guilherme Orth", "role": "membro", "cargo": "Arquiteto Consultor"},
+    {"email": "marcocasimiro@casasognatto.com.br", "name": "Marco Casimiro", "role": "membro", "cargo": "Gerente de Pós-Venda"},
 ]
+DIRETOR_EMAIL = "davinogueira@casasognatto.com.br"
 
 # --- Banco de dados (histórico compartilhado) -------------------------------
 # DATABASE_URL: string de conexão Postgres (Neon, Supabase, Render…). Se não
@@ -171,41 +177,74 @@ def _init_users_db() -> None:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
-                    username      TEXT PRIMARY KEY,
-                    password_hash TEXT NOT NULL,
-                    role          TEXT NOT NULL DEFAULT 'membro',
-                    cargo         TEXT,
-                    active        BOOLEAN NOT NULL DEFAULT true,
-                    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-                    last_seen_at  TIMESTAMPTZ
+                    username        TEXT PRIMARY KEY,
+                    email           TEXT,
+                    password_hash   TEXT,
+                    role            TEXT NOT NULL DEFAULT 'membro',
+                    cargo           TEXT,
+                    active          BOOLEAN NOT NULL DEFAULT true,
+                    email_confirmed BOOLEAN NOT NULL DEFAULT false,
+                    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    last_seen_at    TIMESTAMPTZ
                 );
                 """
             )
-            # Coluna adicionada depois da 1ª versão — garante que bancos já
-            # existentes ganhem o campo sem perder dados.
+            # Migrações aditivas — bancos criados em versões anteriores.
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;")
-            cur.execute("SELECT count(*) FROM users")
-            (count,) = cur.fetchone()
-            if count > 0:
-                return
-            diretor_pwd = os.environ.get("SEED_DIRETOR_PASSWORD")
-            if not diretor_pwd:
-                print(
-                    "[init_users_db] SEED_DIRETOR_PASSWORD não definida — "
-                    "pulando criação inicial de usuários (tabela vazia)."
-                )
-                return
-            member_pwd = os.environ.get("SEED_MEMBER_PASSWORD", "C@s@1945")
-            seed = [(SEED_DIRETOR_USERNAME, diretor_pwd, "diretor", "Diretor")]
-            seed += [(name, member_pwd, "membro", cargo) for name, cargo in SEED_MEMBERS]
-            for username, pwd, role, cargo in seed:
-                cur.execute(
-                    "INSERT INTO users (username, password_hash, role, cargo) "
-                    "VALUES (%s, %s, %s, %s) ON CONFLICT (username) DO NOTHING",
-                    (username, bcrypt_hasher.hash(pwd), role, cargo),
-                )
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;")
+            cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_confirmed BOOLEAN NOT NULL DEFAULT false;")
+            cur.execute("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;")
+            cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (lower(email));")
+
+            # Tokens de confirmação de cadastro e redefinição de senha.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_tokens (
+                    token      TEXT PRIMARY KEY,
+                    username   TEXT NOT NULL,
+                    purpose    TEXT NOT NULL,   -- 'confirm' | 'reset'
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    used       BOOLEAN NOT NULL DEFAULT false,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                """
+            )
+
+            _ensure_roster(cur)
     except Exception as e:
         print(f"[init_users_db] falha ao inicializar usuários: {e}")
+
+
+def _ensure_roster(cur) -> None:
+    """Garante o quadro fixo (ROSTER) de forma idempotente. Preserva senha e
+    confirmação de quem já ativou; só backfilla e-mail/papel/cargo/nome."""
+    diretor_pwd = os.environ.get("SEED_DIRETOR_PASSWORD")
+    for person in ROSTER:
+        is_diretor = person["email"].lower() == DIRETOR_EMAIL.lower()
+        pwd_hash = None
+        confirmed = False
+        if is_diretor and diretor_pwd:
+            pwd_hash = bcrypt_hasher.hash(diretor_pwd)
+            confirmed = True
+        cur.execute(
+            """
+            INSERT INTO users (username, email, password_hash, role, cargo, email_confirmed)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (username) DO UPDATE SET
+                email = EXCLUDED.email,
+                role  = EXCLUDED.role,
+                cargo = EXCLUDED.cargo
+            """,
+            (person["name"], person["email"], pwd_hash, person["role"], person["cargo"], confirmed),
+        )
+        # Diretor: se ainda não tem senha (1ª subida com SEED_DIRETOR_PASSWORD),
+        # define e marca como confirmado, sem depender do fluxo de e-mail.
+        if is_diretor and diretor_pwd:
+            cur.execute(
+                "UPDATE users SET password_hash = COALESCE(password_hash, %s), "
+                "email_confirmed = true WHERE username = %s",
+                (pwd_hash, person["name"]),
+            )
 
 
 def _init_activity_log_db() -> None:
@@ -274,7 +313,16 @@ class ChatRequest(BaseModel):
 
 
 class LoginRequest(BaseModel):
-    username: str
+    email: str
+    password: str
+
+
+class ForgotRequest(BaseModel):
+    email: str
+
+
+class SetPasswordRequest(BaseModel):
+    token: str
     password: str
 
 
@@ -290,19 +338,54 @@ class ConvUpdate(BaseModel):
 
 
 # --- Sessão / autenticação --------------------------------------------------
-def _get_user_row(username: str) -> dict | None:
-    if not DB_ENABLED:
+def _get_user_by_email(email: str) -> dict | None:
+    if not DB_ENABLED or not email:
         return None
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT username, password_hash, role, cargo FROM users "
-            "WHERE username = %s AND active",
-            (username,),
+            "SELECT username, email, password_hash, role, cargo, email_confirmed, active "
+            "FROM users WHERE lower(email) = lower(%s)",
+            (email.strip(),),
         )
         row = cur.fetchone()
     if not row:
         return None
-    return {"username": row[0], "password_hash": row[1], "role": row[2], "cargo": row[3]}
+    return {
+        "username": row[0], "email": row[1], "password_hash": row[2], "role": row[3],
+        "cargo": row[4], "email_confirmed": row[5], "active": row[6],
+    }
+
+
+def _public_base_url() -> str:
+    return (os.environ.get("PUBLIC_BASE_URL") or "http://127.0.0.1:8000").rstrip("/")
+
+
+def _create_auth_token(username: str, purpose: str, ttl_seconds: int) -> str:
+    token = secrets.token_urlsafe(32)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO auth_tokens (token, username, purpose, expires_at) "
+            "VALUES (%s, %s, %s, now() + (%s || ' seconds')::interval)",
+            (token, username, purpose, ttl_seconds),
+        )
+    return token
+
+
+def _consume_auth_token(token: str) -> tuple[str, str] | None:
+    """Valida e invalida um token de uso único. Retorna (username, purpose) ou None."""
+    if not DB_ENABLED or not token:
+        return None
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT username, purpose FROM auth_tokens "
+            "WHERE token = %s AND NOT used AND expires_at > now()",
+            (token,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        cur.execute("UPDATE auth_tokens SET used = true WHERE token = %s", (token,))
+    return (row[0], row[1])
 
 
 def _touch_last_seen(username: str) -> datetime | None:
@@ -446,11 +529,20 @@ def _api_error_detail(e: anthropic.APIStatusError) -> str:
 
 
 # --- Rotas de autenticação --------------------------------------------------
+CONFIRM_TTL = 7 * 24 * 60 * 60  # convite de cadastro: 7 dias
+RESET_TTL = 60 * 60             # redefinição de senha: 1 hora
+
+
 @app.post("/api/login")
 def login(body: LoginRequest):
-    row = _get_user_row(body.username)
-    if not row or not bcrypt_hasher.verify(body.password, row["password_hash"]):
-        raise HTTPException(401, "Usuário ou senha inválidos.")
+    row = _get_user_by_email(body.email)
+    invalid = HTTPException(401, "E-mail ou senha inválidos.")
+    if not row or not row["active"]:
+        raise invalid
+    if not row["email_confirmed"] or not row["password_hash"]:
+        raise HTTPException(403, "Cadastro ainda não confirmado. Verifique o e-mail de convite.")
+    if not bcrypt_hasher.verify(body.password, row["password_hash"]):
+        raise invalid
     token = _serializer.dumps({"username": row["username"], "role": row["role"]})
     resp = JSONResponse({"ok": True, "user": row["username"], "role": row["role"]})
     resp.set_cookie(
@@ -458,6 +550,36 @@ def login(body: LoginRequest):
         samesite="lax", max_age=SESSION_MAX_AGE,
     )
     return resp
+
+
+@app.post("/api/auth/forgot")
+def forgot_password(body: ForgotRequest):
+    """Sempre responde OK — não revela se o e-mail existe (evita enumeração)."""
+    from app.email_send import send_reset_email
+
+    row = _get_user_by_email(body.email)
+    if row and row["active"]:
+        token = _create_auth_token(row["username"], "reset", RESET_TTL)
+        link = f"{_public_base_url()}/definir-senha?token={token}"
+        send_reset_email(row["email"], row["username"], link)
+    return {"ok": True}
+
+
+@app.post("/api/auth/set-password")
+def set_password(body: SetPasswordRequest):
+    """Define a senha via token de convite ('confirm') ou de reset ('reset')."""
+    if len(body.password or "") < 8:
+        raise HTTPException(400, "A senha deve ter pelo menos 8 caracteres.")
+    result = _consume_auth_token(body.token)
+    if not result:
+        raise HTTPException(400, "Link inválido ou expirado. Solicite um novo.")
+    username, _purpose = result
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET password_hash = %s, email_confirmed = true WHERE username = %s",
+            (bcrypt_hasher.hash(body.password), username),
+        )
+    return {"ok": True}
 
 
 @app.post("/api/logout")
@@ -677,6 +799,16 @@ def index(request: Request):
 @app.get("/login")
 def login_page():
     return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+
+
+@app.get("/forgot")
+def forgot_page():
+    return FileResponse(os.path.join(STATIC_DIR, "forgot.html"))
+
+
+@app.get("/definir-senha")
+def set_password_page():
+    return FileResponse(os.path.join(STATIC_DIR, "definir-senha.html"))
 
 
 @app.get("/admin")
