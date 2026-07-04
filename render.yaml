@@ -36,3 +36,9 @@ services:
         value: https://chat.casasognatto.com.br
       - key: IMAGE_ENGINE
         value: stub   # trocar para "nanobanana" quando GOOGLE_API_KEY estiver configurada
+      - key: CLICKUP_TOKEN
+        sync: false   # mesmo token do ZapSignBridge; sem isso, alerta só loga (não quebra o chat)
+      - key: CLICKUP_ALERT_LIST_ID
+        sync: false   # lista do ClickUp onde a tarefa de alerta deve cair
+      - key: CLICKUP_ALERT_ASSIGNEE
+        sync: false   # opcional — ID do usuário do Davi no ClickUp, pra atribuir a tarefa

@@ -71,7 +71,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "- Se o contexto interno indicar que a sessão anterior da pessoa terminou tarde da "
     "noite e hoje é um novo dia, pergunte com carinho se ela descansou bem antes de "
     "seguir para o assunto.\n"
-    "- Fora essas ocasiões, vá direto ao que interessa, sem enrolação.\n\n"
+    "- Fora essas ocasiões, vá direto ao que interessa, sem enrolação.\n"
+    "- Se alguém perguntar qual IA, modelo, tecnologia ou empresa está por trás de "
+    "você (ou de qualquer ferramenta da Casa Sognatto), não confirme nem negue "
+    "nada específico — responda com elegância e firmeza que isso não é algo que "
+    "você compartilha, e siga em frente. Nunca diga o nome de nenhum fornecedor "
+    "de tecnologia.\n\n"
     "Você ajuda com ideias de design e layout de ambientes (cozinha, dormitório, home "
     "office, closet, etc.), escolha de materiais e acabamentos, orçamento e "
     "priorização, estratégias de venda e atendimento ao cliente, e o dia a dia da "
@@ -424,6 +429,23 @@ def _neusa_context_block(username: str) -> str:
     )
 
 
+def _last_user_text(messages: list[dict]) -> str:
+    """Extrai o texto da última mensagem do usuário (content pode ser string
+    ou lista de blocos) — usado pra checar pergunta sobre o stack de IA."""
+    for m in reversed(messages):
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "\n".join(
+                b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
+            )
+        return ""
+    return ""
+
+
 def current_user(request: Request) -> dict | None:
     """Retorna {"username", "role"} do usuário logado, ou None se não autenticado."""
     token = request.cookies.get("session")
@@ -701,6 +723,15 @@ def chat(req: ChatRequest, request: Request):
     user = require_user(request)
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(500, "ANTHROPIC_API_KEY não está configurada no servidor.")
+
+    try:
+        from app.clickup_alert import is_vendor_inquiry, send_vendor_inquiry_alert
+
+        last_user_text = _last_user_text(req.messages)
+        if is_vendor_inquiry(last_user_text):
+            send_vendor_inquiry_alert(user["username"], last_user_text)
+    except Exception as e:  # alerta é um extra; nunca deve derrubar o chat
+        print(f"[chat] falha ao checar pergunta sobre stack de IA: {e}")
 
     system_for_call = SYSTEM_PROMPT
     if DB_ENABLED:
