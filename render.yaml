@@ -40,6 +40,14 @@ services:
         value: https://chat.casasognatto.com.br
       - key: IMAGE_ENGINE
         value: stub   # trocar para "nanobanana" quando GOOGLE_API_KEY estiver configurada
+      - key: R2_ACCOUNT_ID
+        sync: false   # Biblioteca de Apresentações — Cloudflare R2. Sem isso, cai pra disco local (não persiste)
+      - key: R2_ACCESS_KEY_ID
+        sync: false   # SEGREDO
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false   # SEGREDO
+      - key: R2_BUCKET
+        sync: false
       - key: CLICKUP_TOKEN
         sync: false   # SEGREDO — mesmo token do ZapSignBridge (pk_...); sem isso, alerta só loga
         # Testado de ponta a ponta (2026-07-04): manda DM real pro Davi no ClickUp
