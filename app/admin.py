@@ -21,14 +21,22 @@ class UserCreate(BaseModel):
 
 
 def _send_invite(username: str, email: str, background_tasks: BackgroundTasks) -> None:
-    """Gera token de confirmação e agenda o convite por e-mail em segundo
-    plano — envio de e-mail pode ser lento/falhar, não pode travar a resposta."""
+    """Gera token de confirmação e agenda o convite em segundo plano, por
+    dois canais: e-mail (SMTP direto do Render pra KingHost não funciona —
+    ver memória do projeto, "Errno 101") e chat do ClickUp (funciona por
+    HTTPS). Nenhum dos dois pode travar a resposta pro navegador."""
     from app.main import CONFIRM_TTL, _create_auth_token, _public_base_url
     from app.email_send import send_invite_email
+    from app.clickup_alert import send_clickup_dm
 
     token = _create_auth_token(username, "confirm", CONFIRM_TTL)
     link = f"{_public_base_url()}/definir-senha?token={token}"
     background_tasks.add_task(send_invite_email, email, username, link)
+    background_tasks.add_task(
+        send_clickup_dm, email,
+        f"👋 Olá, {username}! Seu acesso à plataforma da Casa Sognatto foi criado. "
+        f"Confirme e defina sua senha aqui: {link}\n\nEste link expira em 7 dias.",
+    )
 
 
 @router.get("/users")

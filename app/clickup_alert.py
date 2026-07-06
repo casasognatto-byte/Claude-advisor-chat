@@ -81,35 +81,46 @@ def _send_chat_message(client: httpx.Client, headers: dict, workspace_id: str, c
     resp.raise_for_status()
 
 
-def send_vendor_inquiry_alert(username: str, message_excerpt: str) -> None:
-    """Nunca deve lançar exceção — é um efeito colateral, não pode derrubar o chat."""
-    excerpt = (message_excerpt or "")[:300]
+def send_clickup_dm(email: str, content: str) -> bool:
+    """Manda uma mensagem de chat direta (DM) pro usuário do ClickUp com esse
+    e-mail. Canal genérico e reaproveitável — usado tanto pro alerta de
+    pergunta sobre IA quanto como via alternativa de entrega de link de
+    convite/reset de senha (o SMTP direto do Render pra KingHost não
+    funciona — ver memória do projeto, "Errno 101 Network is unreachable").
+    Nunca lança exceção; retorna True se enviou, False se não deu por
+    qualquer motivo (token ausente, e-mail não encontrado, erro de rede)."""
     token = os.environ.get("CLICKUP_TOKEN")
     if not token:
-        print(
-            "[clickup_alert] CLICKUP_TOKEN não configurado — alerta não enviado. "
-            f"{username} perguntou sobre o stack de IA: {excerpt!r}"
-        )
-        return
+        print(f"[clickup_alert] CLICKUP_TOKEN não configurado — DM não enviado para {email!r}.")
+        return False
     workspace_id = os.environ.get("CLICKUP_WORKSPACE_ID", DEFAULT_WORKSPACE_ID)
-    email = os.environ.get("CLICKUP_ALERT_EMAIL", DEFAULT_ALERT_EMAIL)
     headers = {"Authorization": token, "Content-Type": "application/json"}
     try:
         with httpx.Client(timeout=15) as client:
             user_id = _find_user_id_by_email(client, headers, workspace_id, email)
             if not user_id:
                 print(f"[clickup_alert] e-mail {email!r} não encontrado no workspace {workspace_id}.")
-                return
+                return False
             channel_id = _get_or_create_dm_channel(client, headers, workspace_id, user_id)
             if not channel_id:
                 print("[clickup_alert] não consegui obter o id do canal de DM.")
-                return
-            content = (
-                f"🔔 **{username}** perguntou qual IA/tecnologia está por trás da Neusa.\n\n"
-                f"Trecho da mensagem: _{excerpt}_"
-            )
+                return False
             _send_chat_message(client, headers, workspace_id, channel_id, content)
+        return True
     except httpx.HTTPStatusError as e:
-        print(f"[clickup_alert] falha HTTP: {e.response.status_code} {e.response.text[:200]}")
+        print(f"[clickup_alert] falha HTTP mandando DM pra {email!r}: {e.response.status_code} {e.response.text[:200]}")
     except Exception as e:
-        print(f"[clickup_alert] falha inesperada: {e}")
+        print(f"[clickup_alert] falha inesperada mandando DM pra {email!r}: {e}")
+    return False
+
+
+def send_vendor_inquiry_alert(username: str, message_excerpt: str) -> None:
+    """Nunca deve lançar exceção — é um efeito colateral, não pode derrubar o chat."""
+    excerpt = (message_excerpt or "")[:300]
+    email = os.environ.get("CLICKUP_ALERT_EMAIL", DEFAULT_ALERT_EMAIL)
+    content = (
+        f"🔔 **{username}** perguntou qual IA/tecnologia está por trás da Neusa.\n\n"
+        f"Trecho da mensagem: _{excerpt}_"
+    )
+    if not send_clickup_dm(email, content) and not os.environ.get("CLICKUP_TOKEN"):
+        print(f"{username} perguntou sobre o stack de IA: {excerpt!r}")

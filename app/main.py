@@ -244,12 +244,25 @@ def _ensure_roster(cur) -> None:
         )
         # Diretor: se ainda não tem senha (1ª subida com SEED_DIRETOR_PASSWORD),
         # define e marca como confirmado, sem depender do fluxo de e-mail.
+        # FORCE_RESET_DIRETOR_PASSWORD=true sobrescreve mesmo se já tiver senha —
+        # via de emergência pra recuperar acesso sem depender de e-mail/ClickUp
+        # (ambos podem falhar; ver memória do projeto sobre o bug de e-mail no
+        # Render). Remover essa variável depois de usar, senão toda subida
+        # nova volta a senha pro valor de SEED_DIRETOR_PASSWORD.
+        force_reset = os.environ.get("FORCE_RESET_DIRETOR_PASSWORD", "").strip().lower() == "true"
         if is_diretor and diretor_pwd:
-            cur.execute(
-                "UPDATE users SET password_hash = COALESCE(password_hash, %s), "
-                "email_confirmed = true WHERE username = %s",
-                (pwd_hash, person["name"]),
-            )
+            if force_reset:
+                cur.execute(
+                    "UPDATE users SET password_hash = %s, email_confirmed = true, "
+                    "active = true WHERE username = %s",
+                    (pwd_hash, person["name"]),
+                )
+            else:
+                cur.execute(
+                    "UPDATE users SET password_hash = COALESCE(password_hash, %s), "
+                    "email_confirmed = true WHERE username = %s",
+                    (pwd_hash, person["name"]),
+                )
 
 
 def _init_activity_log_db() -> None:
@@ -578,14 +591,22 @@ def login(body: LoginRequest):
 def forgot_password(body: ForgotRequest, background_tasks: BackgroundTasks):
     """Sempre responde OK na hora — não revela se o e-mail existe (evita
     enumeração) e não deixa o envio de e-mail (que pode ser lento/falhar)
-    travar a resposta pro navegador."""
+    travar a resposta pro navegador. Manda por dois canais: e-mail (SMTP
+    direto do Render pra KingHost não funciona — ver memória do projeto,
+    "Errno 101") e chat do ClickUp (funciona por HTTPS, sem esse bloqueio)."""
     from app.email_send import send_reset_email
+    from app.clickup_alert import send_clickup_dm
 
     row = _get_user_by_email(body.email)
     if row and row["active"]:
         token = _create_auth_token(row["username"], "reset", RESET_TTL)
         link = f"{_public_base_url()}/definir-senha?token={token}"
         background_tasks.add_task(send_reset_email, row["email"], row["username"], link)
+        background_tasks.add_task(
+            send_clickup_dm, row["email"],
+            f"🔑 Link para redefinir sua senha da plataforma Casa Sognatto: {link}\n\n"
+            "Expira em 1 hora. Se não foi você quem pediu, ignore esta mensagem.",
+        )
     return {"ok": True}
 
 
