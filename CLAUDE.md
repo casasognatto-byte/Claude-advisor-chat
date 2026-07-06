@@ -37,5 +37,37 @@ Git e a sincronização do OneDrive). Protocolo:
 - Sistema já está no ar em produção (Render) desde 04/07/2026.
 - Convites da equipe (arquitetas) ainda não foram enviados.
 
+## Estado em 06/07/2026 (fim de sessão, Davi saindo — continuar em outra máquina)
+
+- Branch `main`, **8 commits locais não enviados ao GitHub** (de `8e1eb14` até `55fa74f`,
+  ver `git log origin/main..HEAD`) — nada foi pushado desde a sessão de 04/07. Não fazer
+  `git push` sem confirmar com o Davi antes (protocolo de sempre).
+- **Feature nova concluída nesta sessão: Biblioteca de prompts** (ícone 📝 no composer).
+  Prompts pré-definidos por ambiente + prompts pessoais compartilhados. Mudança de regra
+  a pedido do Davi: **pré-definidos agora são abertos a qualquer membro logado** (criar/
+  editar/apagar — não é mais só o diretor). Como rede de segurança pra essa liberação:
+  - "Desfazer última edição" (tipo ctrl+z) — pilha de versões em `prompt_versions`,
+    endpoint `POST /api/prompts/{predefined|personal}/{id}/undo`.
+  - Registro de exclusão recuperável — cópia completa em `deleted_prompts` antes de
+    apagar de verdade, painel "🗑 Excluídos recentes" no modal, `POST
+    /api/prompts/deleted/{log_id}/restore`. Exclusão/restauração de prompt **pessoal**
+    continua restrita a quem criou; pré-definido é livre pra todos.
+  - Arquivos: `app/prompts.py` (schema + rotas), `app/static/index.html` (ícone, modal,
+    CSS, JS). Testado de ponta a ponta localmente via API (permissões, undo, delete→
+    restore) e via browser real (login, cliques, screenshots) — sem push ainda.
+  - Detalhe pra próxima sessão: ao subir essas mudanças em produção, `init_prompts_db()`
+    cria as tabelas novas (`prompt_versions`, `deleted_prompts`) automaticamente no boot
+    (mesmo padrão das outras tabelas) — não precisa migração manual.
+- Ambiente de dev local (Postgres `advisor_chat_dev`, venv, `.env`) existe só nesta
+  máquina — não sincroniza via OneDrive (fica fora da pasta do projeto). Se a próxima
+  sessão for em outra máquina, pode ser necessário recriar esse ambiente local do zero
+  (ver `../memory/project_render_to_video_arquitetas.md`, seção "Ambiente de dev local
+  criado nesta sessão", pra reproduzir: Python 3.12 + Postgres 17 via winget, venv, etc.)
+  — ou simplesmente pular o teste local e ir direto pra revisão de código + deploy.
+- Pendências antigas que continuam em aberto: confirmar se o login do Davi em produção
+  já funciona após o reset forçado de senha (e então remover `FORCE_RESET_DIRETOR_PASSWORD`
+  do Render); adicionar créditos na conta Luma pra testar geração de vídeo de verdade;
+  enviar convites reais aos 4 membros da equipe (aguardando autorização explícita do Davi).
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
