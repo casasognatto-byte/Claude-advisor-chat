@@ -6,6 +6,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"   # sem isso, os print() de diagnostico (erros de email/clickup/etc.) ficam
+        # presos no buffer do Python e nunca aparecem nos logs do Render - achado real
+        # investigando por que o "esqueci senha" travava sem erro visivel (2026-07-06)
       - key: ANTHROPIC_API_KEY
         sync: false   # defina no painel do Render (Secret)
       - key: SYSTEM_PROMPT

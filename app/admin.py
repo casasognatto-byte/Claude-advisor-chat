@@ -7,7 +7,7 @@ evitar import circular, já que `app.main` inclui este router.
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/admin")
@@ -20,14 +20,15 @@ class UserCreate(BaseModel):
     cargo: str | None = None
 
 
-def _send_invite(username: str, email: str) -> None:
-    """Gera token de confirmação e dispara o convite por e-mail."""
+def _send_invite(username: str, email: str, background_tasks: BackgroundTasks) -> None:
+    """Gera token de confirmação e agenda o convite por e-mail em segundo
+    plano — envio de e-mail pode ser lento/falhar, não pode travar a resposta."""
     from app.main import CONFIRM_TTL, _create_auth_token, _public_base_url
     from app.email_send import send_invite_email
 
     token = _create_auth_token(username, "confirm", CONFIRM_TTL)
     link = f"{_public_base_url()}/definir-senha?token={token}"
-    send_invite_email(email, username, link)
+    background_tasks.add_task(send_invite_email, email, username, link)
 
 
 @router.get("/users")
@@ -57,7 +58,7 @@ def list_users(request: Request):
 
 
 @router.post("/users")
-def create_user(body: UserCreate, request: Request):
+def create_user(body: UserCreate, request: Request, background_tasks: BackgroundTasks):
     from app.main import _db, _require_db, require_admin
 
     require_admin(request)
@@ -82,12 +83,12 @@ def create_user(body: UserCreate, request: Request):
             "email = EXCLUDED.email, role = EXCLUDED.role, cargo = EXCLUDED.cargo, active = true",
             (name, email, role, body.cargo),
         )
-    _send_invite(name, email)
+    _send_invite(name, email, background_tasks)
     return {"ok": True}
 
 
 @router.post("/users/{username}/resend-invite")
-def resend_invite(username: str, request: Request):
+def resend_invite(username: str, request: Request, background_tasks: BackgroundTasks):
     from app.main import _db, _require_db, require_admin
 
     require_admin(request)
@@ -97,7 +98,7 @@ def resend_invite(username: str, request: Request):
         row = cur.fetchone()
     if not row or not row[0]:
         raise HTTPException(404, "Usuário não encontrado ou sem e-mail.")
-    _send_invite(username, row[0])
+    _send_invite(username, row[0], background_tasks)
     return {"ok": True}
 
 

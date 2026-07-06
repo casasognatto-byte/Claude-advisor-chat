@@ -38,11 +38,11 @@ def _send_smtp(to: str, subject: str, html_body: str, text_body: str) -> bool:
 
     try:
         if port == 465:
-            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context()) as s:
+            with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=15) as s:
                 s.login(user, password)
                 s.send_message(msg)
         else:
-            with smtplib.SMTP(host, port) as s:
+            with smtplib.SMTP(host, port, timeout=15) as s:
                 if use_starttls:
                     s.starttls(context=ssl.create_default_context())
                 s.login(user, password)

@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
     pass
 
 import anthropic
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -575,15 +575,17 @@ def login(body: LoginRequest):
 
 
 @app.post("/api/auth/forgot")
-def forgot_password(body: ForgotRequest):
-    """Sempre responde OK — não revela se o e-mail existe (evita enumeração)."""
+def forgot_password(body: ForgotRequest, background_tasks: BackgroundTasks):
+    """Sempre responde OK na hora — não revela se o e-mail existe (evita
+    enumeração) e não deixa o envio de e-mail (que pode ser lento/falhar)
+    travar a resposta pro navegador."""
     from app.email_send import send_reset_email
 
     row = _get_user_by_email(body.email)
     if row and row["active"]:
         token = _create_auth_token(row["username"], "reset", RESET_TTL)
         link = f"{_public_base_url()}/definir-senha?token={token}"
-        send_reset_email(row["email"], row["username"], link)
+        background_tasks.add_task(send_reset_email, row["email"], row["username"], link)
     return {"ok": True}
 
 
