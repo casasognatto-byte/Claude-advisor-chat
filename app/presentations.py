@@ -8,6 +8,13 @@ ficam salvas aqui, guiadas por uma entrevista à parte (não implementada
 neste módulo) e alimentadas por uma biblioteca de padrões técnicos
 recorrentes (ex: "cristaleira com lateral de vidro -> luz ao fundo").
 
+A apresentação estática é um deck padrão: um número fixo de slides
+institucionais (loja + indústria/fornecedores, sempre os mesmos, editáveis
+pela equipe) seguido pelos slides de ambientes do cliente, na ordem já
+calculada. Sem Canva/Templated — montado nativamente aqui, servido como uma
+lista ordenada de imagens que o frontend usa pra apresentação em tela cheia
+ou exportação.
+
 Mesma regra de sempre: imports de `app.main` ficam dentro das funções para
 evitar import circular. Arquivos ficam em `app.storage` (R2 ou disco local).
 """
@@ -15,7 +22,7 @@ evitar import circular. Arquivos ficam em `app.storage` (R2 ou disco local).
 import json
 import secrets
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/presentations")
@@ -136,6 +143,19 @@ def init_presentations_db() -> None:
                     deleted_by     TEXT NOT NULL,
                     deleted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
                     restored       BOOLEAN NOT NULL DEFAULT false
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS institutional_slides (
+                    id          TEXT PRIMARY KEY,
+                    storage_key TEXT NOT NULL,
+                    mime        TEXT NOT NULL,
+                    caption     TEXT NOT NULL DEFAULT '',
+                    sort_order  INTEGER NOT NULL,
+                    created_by  TEXT NOT NULL,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
                 """
             )
@@ -575,3 +595,170 @@ def restore_pattern(log_id: int, request: Request):
         new_id = cur.fetchone()[0]
         cur.execute("UPDATE deleted_style_patterns SET restored = true WHERE id = %s", (log_id,))
     return {"ok": True, "id": new_id}
+
+
+# --- Slides institucionais (deck fixo: loja + indústria) ---------------------
+# Sempre os mesmos, em toda apresentação, editáveis por qualquer membro da
+# equipe. Ficam na frente dos slides de ambientes de cada projeto de cliente.
+@router.get("/institutional/slides")
+def list_institutional_slides(request: Request):
+    from app.main import DB_ENABLED, _db, require_user
+
+    require_user(request)
+    if not DB_ENABLED:
+        return []
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, caption, sort_order, created_by, EXTRACT(EPOCH FROM created_at) "
+            "FROM institutional_slides ORDER BY sort_order"
+        )
+        rows = cur.fetchall()
+    return [
+        {"id": r[0], "caption": r[1], "sortOrder": r[2], "createdBy": r[3], "createdAt": float(r[4])}
+        for r in rows
+    ]
+
+
+@router.post("/institutional/slides")
+async def add_institutional_slide(request: Request, image: UploadFile = File(...), caption: str = Form("")):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    mime = image.content_type or "image/jpeg"
+    if mime not in _MIME_OK:
+        raise HTTPException(400, "Formato de imagem não suportado.")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(400, "Imagem vazia ou não enviada.")
+
+    slide_id = "inst" + secrets.token_hex(8)
+    ext = mime.split("/", 1)[1]
+    storage_key = f"institutional/{slide_id}.{ext}"
+    storage.put(storage_key, image_bytes, mime)
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM institutional_slides")
+        next_order = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO institutional_slides (id, storage_key, mime, caption, sort_order, created_by) "
+            "VALUES (%s, %s, %s, %s, %s, %s)",
+            (slide_id, storage_key, mime, caption, next_order, user["username"]),
+        )
+    return {"id": slide_id, "sortOrder": next_order}
+
+
+@router.get("/institutional/slides/{slide_id}/file")
+def get_institutional_slide_file(slide_id: str, request: Request):
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT storage_key, mime FROM institutional_slides WHERE id = %s", (slide_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Slide não encontrado.")
+    data = storage.get(row[0])
+    if data is None:
+        raise HTTPException(404, "Arquivo não disponível.")
+    return Response(content=data, media_type=row[1])
+
+
+class SlideUpdate(BaseModel):
+    caption: str | None = None
+
+
+@router.put("/institutional/slides/{slide_id}")
+def update_institutional_slide(slide_id: str, body: SlideUpdate, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE institutional_slides SET caption = %s WHERE id = %s",
+            (body.caption or "", slide_id),
+        )
+        cur.execute("SELECT 1 FROM institutional_slides WHERE id = %s", (slide_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Slide não encontrado.")
+    return {"ok": True}
+
+
+@router.delete("/institutional/slides/{slide_id}")
+def delete_institutional_slide(slide_id: str, request: Request):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT storage_key FROM institutional_slides WHERE id = %s", (slide_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Slide não encontrado.")
+        cur.execute("DELETE FROM institutional_slides WHERE id = %s", (slide_id,))
+    storage.delete(row[0])
+    return {"ok": True}
+
+
+class SlideReorder(BaseModel):
+    orderedIds: list[str]
+
+
+@router.post("/institutional/slides/reorder")
+def reorder_institutional_slides(body: SlideReorder, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        for position, slide_id in enumerate(body.orderedIds):
+            cur.execute(
+                "UPDATE institutional_slides SET sort_order = %s WHERE id = %s",
+                (position, slide_id),
+            )
+    return {"ok": True}
+
+
+# --- Montagem do deck completo (institucional + ambientes do cliente) -------
+@router.get("/{project_id}/deck")
+def get_deck(project_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT client_name FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+
+        cur.execute(
+            "SELECT id, caption FROM institutional_slides ORDER BY sort_order"
+        )
+        slides = [
+            {"kind": "institucional", "id": r[0], "caption": r[1], "fileUrl": f"/api/presentations/institutional/slides/{r[0]}/file"}
+            for r in cur.fetchall()
+        ]
+
+        cur.execute(
+            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
+            f"ORDER BY {_room_position_sql()}, created_at",
+            (project_id,),
+        )
+        slides += [
+            {
+                "kind": "ambiente",
+                "id": r[0],
+                "caption": ROOM_LABELS.get(r[1], r[1]),
+                "fileUrl": f"/api/presentations/{project_id}/images/{r[0]}/file",
+            }
+            for r in cur.fetchall()
+        ]
+    return {"projectId": project_id, "clientName": project[0], "slides": slides}
