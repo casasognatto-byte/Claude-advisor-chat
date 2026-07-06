@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Casa Sognatto · Apresentações</title>
+<style>
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-display:swap; }
+  @font-face { font-family:'Sackers'; src:url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display:swap; }
+  @font-face { font-family:'NeueMontreal'; src:url('/static/fonts/PPNeueMontreal.ttf') format('truetype'); font-display:swap; }
+
+  :root {
+    --green-950: #0b1a10; --green-900: #0f2114; --green-800: #152C1C;
+    --green-700: #1d3a27; --green-600: #274a34;
+    --cream: #ece9e1; --muted: #93a597; --gold: #c2a06a; --gold-soft: #d8bd8b;
+    --border: #2a4434;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: 'NeueMontreal', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); min-height: 100vh; }
+
+  header { padding: 14px 22px; background: var(--green-900); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .h-left { display: flex; align-items: center; gap: 10px; }
+  .h-left .key { color: var(--gold); }
+  .h-title { font-family:'Benjamin'; font-size: 17px; }
+  .h-right { display: flex; align-items: center; gap: 10px; }
+  a.link, button.link { color: var(--muted); text-decoration: none; font-size: 12.5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-family: inherit; }
+  a.link:hover, button.link:hover { border-color: var(--gold); color: var(--gold); }
+
+  nav.tabs { max-width: 1100px; margin: 20px auto 0; padding: 0 20px; display: flex; gap: 8px; }
+  nav.tabs button { background: var(--green-900); color: var(--muted); border: 1px solid var(--border); border-radius: 10px 10px 0 0; padding: 10px 18px; font-family:'Sackers'; font-size: 11px; letter-spacing:.1em; text-transform: uppercase; cursor: pointer; }
+  nav.tabs button.active { color: var(--gold); border-bottom-color: var(--green-900); background: var(--green-900); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 0 20px 60px; }
+  section.view { display: none; background: var(--green-900); border: 1px solid var(--border); border-radius: 0 14px 14px 14px; padding: 22px; }
+  section.view.active { display: block; }
+  h2 { font-family:'Sackers'; font-size: 12px; letter-spacing:.14em; text-transform: uppercase; color: var(--gold); margin: 0 0 16px; }
+  h3 { font-family:'Sackers'; font-size: 11px; letter-spacing:.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--green-800); }
+
+  .form-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  input, select, textarea { background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 13.5px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--gold); }
+  label { font-size: 11.5px; color: var(--muted); display: block; margin: 10px 0 4px; }
+  button.primary { background: var(--gold); color: #1c1408; border: none; border-radius: 8px; padding: 9px 16px; font-family:'Sackers'; font-size: 11.5px; letter-spacing:.1em; text-transform: uppercase; cursor: pointer; }
+  button.primary:hover { background: var(--gold-soft); }
+  button.danger { background: transparent; border: 1px solid #a55; color: #ff9d9d; border-radius: 8px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; }
+  button.danger:hover { background: rgba(255,157,157,.1); }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; }
+  button.ghost:hover { border-color: var(--gold); color: var(--gold); }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+
+  .chip { display: inline-block; padding: 6px 13px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); background: var(--green-800); color: var(--muted); cursor: pointer; margin: 3px 5px 3px 0; }
+  .chip.active { background: var(--gold); color: #1c1408; border-color: var(--gold); }
+
+  /* --- Projeto: grid de imagens --- */
+  .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 14px; }
+  .img-card { background: var(--green-800); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .img-card img { width: 100%; height: 150px; object-fit: cover; display: block; background: var(--green-700); }
+  .img-card .card-body { padding: 10px 12px; }
+  .img-card .room-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .img-card select { font-size: 12px; padding: 5px 7px; }
+  .style-panel { display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .style-panel.open { display: block; }
+  .style-panel textarea { width: 100%; min-height: 50px; resize: vertical; }
+  .style-panel input[type=text] { width: 100%; }
+
+  /* --- Slides institucionais --- */
+  .slide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 14px; }
+  .slide-card { background: var(--green-800); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .slide-card img { width: 100%; height: 130px; object-fit: cover; display: block; }
+  .slide-card .card-body { padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .slide-card input[type=text] { width: 100%; font-size: 12.5px; }
+  .slide-card .row { display: flex; gap: 6px; justify-content: space-between; }
+
+  /* --- Viewer em tela cheia --- */
+  .viewer-overlay { position: fixed; inset: 0; background: #000; display: none; align-items: center; justify-content: center; z-index: 200; flex-direction: column; }
+  .viewer-overlay.open { display: flex; }
+  .viewer-overlay img { max-width: 92vw; max-height: 78vh; object-fit: contain; }
+  .viewer-caption { color: var(--cream); font-size: 14px; margin-top: 14px; text-align: center; }
+  .viewer-counter { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .viewer-nav { position: absolute; top: 0; bottom: 0; width: 15%; display: flex; align-items: center; font-size: 34px; color: rgba(236,233,225,.5); background: transparent; border: none; cursor: pointer; }
+  .viewer-nav:hover { color: var(--gold); }
+  .viewer-nav.prev { left: 0; justify-content: flex-start; padding-left: 18px; }
+  .viewer-nav.next { right: 0; justify-content: flex-end; padding-right: 18px; }
+  .viewer-close { position: absolute; top: 18px; right: 22px; background: transparent; border: none; color: var(--cream); font-size: 22px; cursor: pointer; }
+
+  .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: var(--green-950); border: 1px solid var(--gold); color: var(--cream); padding: 10px 18px; border-radius: 10px; font-size: 13px; z-index: 300; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+  .toast.show { opacity: 1; }
+
+  .back-row { margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="h-left">
+    <svg class="key" width="16" height="32" viewBox="0 0 60 120" fill="none">
+      <g stroke="currentColor" stroke-width="6"><circle cx="30" cy="20" r="10"/><circle cx="18" cy="37" r="10"/><circle cx="42" cy="37" r="10"/></g>
+      <rect x="26.5" y="50" width="7" height="58" rx="1.5" fill="currentColor"/>
+      <rect x="33.5" y="92" width="11" height="6" fill="currentColor"/>
+      <rect x="33.5" y="102" width="8" height="6" fill="currentColor"/>
+    </svg>
+    <div class="h-title">Apresentações</div>
+  </div>
+  <div class="h-right">
+    <a class="link" href="/">← Chat</a>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-view="projects">Projetos</button>
+  <button class="tab-btn" data-view="institutional">Slides institucionais</button>
+  <button class="tab-btn" data-view="patterns">Padrões técnicos</button>
+</nav>
+
+<main>
+  <!-- ---------------- Projetos ---------------- -->
+  <section class="view active" id="view-projects">
+    <div id="projectsList">
+      <h2>Projetos de cliente</h2>
+      <table>
+        <thead><tr><th>Cliente</th><th>Imagens</th><th>Criado por</th><th></th></tr></thead>
+        <tbody id="projectsBody"></tbody>
+      </table>
+      <div class="empty" id="projectsEmpty" style="display:none;">Nenhum projeto ainda.</div>
+      <div class="form-row">
+        <input id="newClientName" placeholder="Nome do cliente" />
+        <button class="primary" id="createProjectBtn">Criar projeto</button>
+      </div>
+    </div>
+
+    <div id="projectDetail" style="display:none;">
+      <div class="back-row"><button class="ghost" id="backToProjects">← Voltar aos projetos</button></div>
+      <h2 id="projectTitle">—</h2>
+      <div class="form-row">
+        <button class="primary" id="viewDeckBtn">▶ Ver apresentação</button>
+        <button class="danger" id="deleteProjectBtn">Apagar projeto</button>
+      </div>
+      <h3>Enviar imagens (renders do Promob)</h3>
+      <div class="form-row">
+        <input type="file" id="imageUpload" accept="image/*" multiple />
+      </div>
+      <div class="muted" id="uploadMsg" style="margin-top:6px;"></div>
+      <div class="img-grid" id="imgGrid"></div>
+    </div>
+  </section>
+
+  <!-- ---------------- Slides institucionais ---------------- -->
+  <section class="view" id="view-institutional">
+    <h2>Slides institucionais (loja + indústria)</h2>
+    <div class="muted">Sempre os mesmos em toda apresentação — entram antes das imagens de cada cliente.</div>
+    <h3>Adicionar slide</h3>
+    <div class="form-row">
+      <input type="file" id="instUpload" accept="image/*" />
+      <input type="text" id="instCaption" placeholder="Legenda (ex: Quem somos)" />
+      <button class="primary" id="instAddBtn">Adicionar</button>
+    </div>
+    <div class="slide-grid" id="instGrid"></div>
+    <div class="empty" id="instEmpty" style="display:none;">Nenhum slide institucional ainda.</div>
+  </section>
+
+  <!-- ---------------- Padrões técnicos ---------------- -->
+  <section class="view" id="view-patterns">
+    <h2>Biblioteca de padrões técnicos</h2>
+    <div class="muted">Ex: "cristaleira" + "lateral de vidro" → "LED indireto ao fundo". A Neusa sugere isso na entrevista em vez de perguntar do zero.</div>
+    <table>
+      <thead><tr><th>Móvel</th><th>Atributo</th><th>Recomendação</th><th></th></tr></thead>
+      <tbody id="patternsBody"></tbody>
+    </table>
+    <div class="empty" id="patternsEmpty" style="display:none;">Nenhum padrão cadastrado ainda.</div>
+    <h3 id="patternFormTitle">Novo padrão</h3>
+    <div class="form-row">
+      <input type="text" id="patternFurniture" placeholder="Tipo de móvel (ex: cristaleira)" />
+      <input type="text" id="patternAttribute" placeholder="Atributo (ex: lateral de vidro)" />
+    </div>
+    <textarea id="patternRecommendation" rows="2" placeholder="Recomendação técnica" style="width:100%; margin-top:10px;"></textarea>
+    <div class="form-row">
+      <button class="primary" id="patternSaveBtn">Salvar</button>
+      <button class="ghost" id="patternCancelBtn" style="display:none;">Cancelar edição</button>
+    </div>
+    <button class="ghost" id="patternsTrashToggle" style="margin-top:18px;">🗑 Excluídos recentes</button>
+    <table id="deletedPatternsTable" style="display:none; margin-top:10px;">
+      <thead><tr><th>Móvel</th><th>Atributo</th><th>Recomendação</th><th></th></tr></thead>
+      <tbody id="deletedPatternsBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<!-- ---------------- Viewer em tela cheia ---------------- -->
+<div class="viewer-overlay" id="viewerOverlay">
+  <button class="viewer-close" id="viewerClose">✕</button>
+  <button class="viewer-nav prev" id="viewerPrev">‹</button>
+  <img id="viewerImg" src="" alt="" />
+  <button class="viewer-nav next" id="viewerNext">›</button>
+  <div class="viewer-caption" id="viewerCaption"></div>
+  <div class="viewer-counter" id="viewerCounter"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let toastTimer = null;
+  function toast(msg) {
+    const el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 3000);
+  }
+  const ROOM_OPTIONS = [
+    ["fachada","Fachada"], ["hall_entrada","Hall de entrada"], ["sala_estar","Sala de estar"],
+    ["sala_jantar","Sala de jantar"], ["lavabo","Lavabo"], ["escritorio","Escritório"],
+    ["cozinha","Cozinha"], ["area_servico","Área de serviço"], ["area_gourmet","Área gourmet"],
+    ["varanda","Varanda"], ["suite_master","Suíte master"], ["closet","Closet / vestidor"],
+    ["banheiro_suite","Banheiro da suíte"], ["quarto","Quarto"], ["banheiro_social","Banheiro social"],
+    ["outro","Outro ambiente"],
+  ];
+  const DECOR_ITEMS = ["Abajur","Arandela","Pendente","Luminária","Porta-retrato","Vaso","Cortina","Tapete","Papel de parede"];
+  const LIGHT_TONES = [["quente","Quente (3000K)"], ["neutra","Neutra (4000K)"], ["fria","Fria (6000K)"], ["personalizada","Personalizada"]];
+
+  async function api(path, opts) {
+    const res = await fetch(path, opts);
+    if (res.status === 401) { window.location.href = "/login"; throw new Error("401"); }
+    if (!res.ok) { let d = res.statusText; try { d = (await res.json()).detail || d; } catch (_) {} throw new Error(d); }
+    return res.status === 204 ? null : res.json();
+  }
+
+  // ---------------- Navegação por abas ----------------
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll("section.view").forEach(v => v.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("view-" + btn.dataset.view).classList.add("active");
+    });
+  });
+
+  // ---------------- Projetos ----------------
+  let currentProjectId = null;
+
+  async function loadProjects() {
+    const rows = await api("/api/presentations");
+    const body = document.getElementById("projectsBody");
+    body.innerHTML = "";
+    document.getElementById("projectsEmpty").style.display = rows.length ? "none" : "block";
+    for (const p of rows) {
+      const tr = document.createElement("tr");
+      tr.className = "clickable";
+      tr.innerHTML = `<td>${p.clientName}</td><td>${p.imageCount}</td><td>${p.createdBy}</td><td></td>`;
+      tr.addEventListener("click", () => openProject(p.id));
+      body.appendChild(tr);
+    }
+  }
+
+  document.getElementById("createProjectBtn").addEventListener("click", async () => {
+    const input = document.getElementById("newClientName");
+    const name = input.value.trim();
+    if (!name) return;
+    const p = await api("/api/presentations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: name }) });
+    input.value = "";
+    await loadProjects();
+    openProject(p.id);
+  });
+
+  async function openProject(id) {
+    currentProjectId = id;
+    document.getElementById("projectsList").style.display = "none";
+    document.getElementById("projectDetail").style.display = "block";
+    await refreshProject();
+  }
+
+  document.getElementById("backToProjects").addEventListener("click", () => {
+    currentProjectId = null;
+    document.getElementById("projectDetail").style.display = "none";
+    document.getElementById("projectsList").style.display = "block";
+    loadProjects();
+  });
+
+  document.getElementById("deleteProjectBtn").addEventListener("click", async () => {
+    if (!confirm("Apagar este projeto e todas as imagens dele? Não tem como desfazer.")) return;
+    await api("/api/presentations/" + currentProjectId, { method: "DELETE" });
+    document.getElementById("backToProjects").click();
+  });
+
+  function roomSelectHtml(current) {
+    return ROOM_OPTIONS.map(([v, label]) => `<option value="${v}" ${v === current ? "selected" : ""}>${label}</option>`).join("");
+  }
+
+  function decorChipsHtml(selected) {
+    return DECOR_ITEMS.map(item => {
+      const active = (selected || []).includes(item) ? " active" : "";
+      return `<span class="chip decor-chip${active}" data-item="${item}">${item}</span>`;
+    }).join("");
+  }
+
+  async function refreshProject() {
+    const project = await api("/api/presentations/" + currentProjectId);
+    document.getElementById("projectTitle").textContent = project.clientName;
+    const grid = document.getElementById("imgGrid");
+    grid.innerHTML = "";
+    for (const img of project.images) {
+      const style = img.style || {};
+      const card = document.createElement("div");
+      card.className = "img-card";
+      card.innerHTML = `
+        <img src="/api/presentations/${currentProjectId}/images/${img.id}/file" loading="lazy" />
+        <div class="card-body">
+          <div class="room-row">
+            <select class="room-select">${roomSelectHtml(img.roomType)}</select>
+            <button class="ghost toggle-style">Ajustar</button>
+          </div>
+          <div class="style-panel">
+            <label>Cor real do MDF/MDP (o Promob nem sempre é fiel)</label>
+            <input type="text" class="f-mdf" value="${(style.mdfColor || "").replace(/"/g, '&quot;')}" placeholder="Ex: Freijó Marchiano, conferido com amostra física" />
+            <label>Iluminação geral (teto)</label>
+            <div class="light-tones">
+              ${LIGHT_TONES.map(([v, label]) => `<span class="chip tone-chip${style.ilumGeralTom === v ? " active" : ""}" data-tone="${v}">${label}</span>`).join("")}
+            </div>
+            <textarea class="f-ilum-geral" placeholder="Detalhe (tipo de luminária, posição...)">${style.ilumGeralDetalhe || ""}</textarea>
+            <label>Iluminação nos móveis</label>
+            <select class="pattern-suggest"><option value="">— sugestões da biblioteca —</option></select>
+            <textarea class="f-ilum-moveis" placeholder="Ex: LED indireto no fundo do nicho">${style.ilumMoveis || ""}</textarea>
+            <label>Decoração</label>
+            <div class="decor-chips">${decorChipsHtml(style.decoracao)}</div>
+            <div class="form-row">
+              <button class="primary save-style">Salvar</button>
+              <button class="danger delete-image">Apagar imagem</button>
+              <span class="muted save-msg"></span>
+            </div>
+          </div>
+        </div>`;
+
+      card.querySelector(".room-select").addEventListener("change", async (e) => {
+        await api(`/api/presentations/${currentProjectId}/images/${img.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ roomType: e.target.value }),
+        });
+      });
+
+      const panel = card.querySelector(".style-panel");
+      card.querySelector(".toggle-style").addEventListener("click", async () => {
+        panel.classList.toggle("open");
+        if (panel.classList.contains("open")) await fillPatternSuggestions(card.querySelector(".pattern-suggest"));
+      });
+
+      card.querySelectorAll(".tone-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          card.querySelectorAll(".tone-chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+        });
+      });
+      card.querySelectorAll(".decor-chip").forEach(chip => {
+        chip.addEventListener("click", () => chip.classList.toggle("active"));
+      });
+      card.querySelector(".pattern-suggest").addEventListener("change", (e) => {
+        if (e.target.value) card.querySelector(".f-ilum-moveis").value = e.target.value;
+        e.target.value = "";
+      });
+
+      card.querySelector(".save-style").addEventListener("click", async () => {
+        const activeTone = card.querySelector(".tone-chip.active");
+        const newStyle = {
+          mdfColor: card.querySelector(".f-mdf").value.trim(),
+          ilumGeralTom: activeTone ? activeTone.dataset.tone : "",
+          ilumGeralDetalhe: card.querySelector(".f-ilum-geral").value.trim(),
+          ilumMoveis: card.querySelector(".f-ilum-moveis").value.trim(),
+          decoracao: Array.from(card.querySelectorAll(".decor-chip.active")).map(c => c.dataset.item),
+        };
+        await api(`/api/presentations/${currentProjectId}/images/${img.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ style: newStyle }),
+        });
+        const msgEl = card.querySelector(".save-msg");
+        msgEl.textContent = "Salvo.";
+        setTimeout(() => { msgEl.textContent = ""; }, 2500);
+      });
+
+      card.querySelector(".delete-image").addEventListener("click", async () => {
+        if (!confirm("Apagar esta imagem?")) return;
+        await api(`/api/presentations/${currentProjectId}/images/${img.id}`, { method: "DELETE" });
+        refreshProject();
+      });
+
+      grid.appendChild(card);
+    }
+  }
+
+  async function fillPatternSuggestions(select) {
+    if (select.dataset.loaded) return;
+    select.dataset.loaded = "1";
+    const patterns = await api("/api/presentations/patterns/list");
+    for (const p of patterns) {
+      const opt = document.createElement("option");
+      opt.value = p.recommendation;
+      opt.textContent = `${p.furnitureType} — ${p.attribute}: ${p.recommendation}`;
+      select.appendChild(opt);
+    }
+  }
+
+  document.getElementById("imageUpload").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const msg = document.getElementById("uploadMsg");
+    for (let i = 0; i < files.length; i++) {
+      msg.textContent = `Enviando e classificando ${i + 1}/${files.length}…`;
+      const fd = new FormData();
+      fd.append("image", files[i]);
+      await fetch(`/api/presentations/${currentProjectId}/images`, { method: "POST", body: fd });
+    }
+    msg.textContent = "";
+    e.target.value = "";
+    refreshProject();
+  });
+
+  // ---------------- Viewer em tela cheia ----------------
+  let deckSlides = []; let deckIndex = 0;
+
+  document.getElementById("viewDeckBtn").addEventListener("click", async () => {
+    const deck = await api(`/api/presentations/${currentProjectId}/deck`);
+    if (!deck.slides.length) { toast("Nenhum slide pra mostrar ainda (adicione slides institucionais e/ou imagens)."); return; }
+    deckSlides = deck.slides; deckIndex = 0;
+    openViewer();
+  });
+
+  function openViewer() {
+    document.getElementById("viewerOverlay").classList.add("open");
+    renderViewerSlide();
+  }
+  function closeViewer() { document.getElementById("viewerOverlay").classList.remove("open"); }
+  function renderViewerSlide() {
+    const s = deckSlides[deckIndex];
+    document.getElementById("viewerImg").src = s.fileUrl;
+    document.getElementById("viewerCaption").textContent = s.caption || "";
+    document.getElementById("viewerCounter").textContent = `${deckIndex + 1} / ${deckSlides.length}`;
+  }
+  document.getElementById("viewerClose").addEventListener("click", closeViewer);
+  document.getElementById("viewerPrev").addEventListener("click", () => { deckIndex = (deckIndex - 1 + deckSlides.length) % deckSlides.length; renderViewerSlide(); });
+  document.getElementById("viewerNext").addEventListener("click", () => { deckIndex = (deckIndex + 1) % deckSlides.length; renderViewerSlide(); });
+  document.addEventListener("keydown", (e) => {
+    if (!document.getElementById("viewerOverlay").classList.contains("open")) return;
+    if (e.key === "Escape") closeViewer();
+    if (e.key === "ArrowRight") document.getElementById("viewerNext").click();
+    if (e.key === "ArrowLeft") document.getElementById("viewerPrev").click();
+  });
+
+  // ---------------- Slides institucionais ----------------
+  async function loadInstitutional() {
+    const slides = await api("/api/presentations/institutional/slides");
+    const grid = document.getElementById("instGrid");
+    grid.innerHTML = "";
+    document.getElementById("instEmpty").style.display = slides.length ? "none" : "block";
+    slides.forEach((s, i) => {
+      const card = document.createElement("div");
+      card.className = "slide-card";
+      card.innerHTML = `
+        <img src="/api/presentations/institutional/slides/${s.id}/file" loading="lazy" />
+        <div class="card-body">
+          <input type="text" class="cap-input" value="${(s.caption || "").replace(/"/g, '&quot;')}" />
+          <div class="row">
+            <button class="ghost move-up">↑</button>
+            <button class="ghost move-down">↓</button>
+            <button class="danger del-slide">Apagar</button>
+          </div>
+        </div>`;
+      card.querySelector(".cap-input").addEventListener("change", async (e) => {
+        await api(`/api/presentations/institutional/slides/${s.id}`, {
+          method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caption: e.target.value }),
+        });
+      });
+      card.querySelector(".move-up").addEventListener("click", () => reorderInstitutional(slides, i, i - 1));
+      card.querySelector(".move-down").addEventListener("click", () => reorderInstitutional(slides, i, i + 1));
+      card.querySelector(".del-slide").addEventListener("click", async () => {
+        if (!confirm("Apagar este slide institucional?")) return;
+        await api(`/api/presentations/institutional/slides/${s.id}`, { method: "DELETE" });
+        loadInstitutional();
+      });
+      grid.appendChild(card);
+    });
+  }
+
+  async function reorderInstitutional(slides, from, to) {
+    if (to < 0 || to >= slides.length) return;
+    const ids = slides.map(s => s.id);
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    await api("/api/presentations/institutional/slides/reorder", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderedIds: ids }),
+    });
+    loadInstitutional();
+  }
+
+  document.getElementById("instAddBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("instUpload");
+    const caption = document.getElementById("instCaption").value.trim();
+    if (!fileInput.files.length) { toast("Escolha uma imagem."); return; }
+    const fd = new FormData();
+    fd.append("image", fileInput.files[0]);
+    fd.append("caption", caption);
+    await fetch("/api/presentations/institutional/slides", { method: "POST", body: fd });
+    fileInput.value = ""; document.getElementById("instCaption").value = "";
+    loadInstitutional();
+  });
+
+  // ---------------- Padrões técnicos ----------------
+  let editingPatternId = null;
+
+  async function loadPatterns() {
+    const rows = await api("/api/presentations/patterns/list");
+    const body = document.getElementById("patternsBody");
+    body.innerHTML = "";
+    document.getElementById("patternsEmpty").style.display = rows.length ? "none" : "block";
+    for (const p of rows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${p.furnitureType}</td><td>${p.attribute}</td><td>${p.recommendation}</td><td></td>`;
+      const td = tr.lastElementChild;
+      const editBtn = document.createElement("button");
+      editBtn.className = "ghost"; editBtn.textContent = "Editar";
+      editBtn.addEventListener("click", () => {
+        editingPatternId = p.id;
+        document.getElementById("patternFurniture").value = p.furnitureType;
+        document.getElementById("patternAttribute").value = p.attribute;
+        document.getElementById("patternRecommendation").value = p.recommendation;
+        document.getElementById("patternFormTitle").textContent = "Editando padrão";
+        document.getElementById("patternCancelBtn").style.display = "inline-block";
+      });
+      const undoBtn = document.createElement("button");
+      undoBtn.className = "ghost"; undoBtn.textContent = "↩ Desfazer"; undoBtn.style.marginLeft = "6px";
+      undoBtn.addEventListener("click", async () => {
+        try { await api(`/api/presentations/patterns/${p.id}/undo`, { method: "POST" }); loadPatterns(); }
+        catch (e) { toast(e.message); }
+      });
+      const delBtn = document.createElement("button");
+      delBtn.className = "danger"; delBtn.textContent = "Apagar"; delBtn.style.marginLeft = "6px";
+      delBtn.addEventListener("click", async () => {
+        if (!confirm("Apagar este padrão? Fica recuperável em Excluídos recentes.")) return;
+        await api(`/api/presentations/patterns/${p.id}`, { method: "DELETE" });
+        loadPatterns();
+      });
+      td.append(editBtn, undoBtn, delBtn);
+      body.appendChild(tr);
+    }
+  }
+
+  document.getElementById("patternSaveBtn").addEventListener("click", async () => {
+    const body = {
+      furnitureType: document.getElementById("patternFurniture").value.trim(),
+      attribute: document.getElementById("patternAttribute").value.trim(),
+      recommendation: document.getElementById("patternRecommendation").value.trim(),
+    };
+    if (!body.furnitureType || !body.recommendation) { toast("Preencha o tipo de móvel e a recomendação."); return; }
+    if (editingPatternId) {
+      await api(`/api/presentations/patterns/${editingPatternId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    } else {
+      await api("/api/presentations/patterns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    }
+    document.getElementById("patternCancelBtn").click();
+    loadPatterns();
+  });
+
+  document.getElementById("patternCancelBtn").addEventListener("click", () => {
+    editingPatternId = null;
+    document.getElementById("patternFurniture").value = "";
+    document.getElementById("patternAttribute").value = "";
+    document.getElementById("patternRecommendation").value = "";
+    document.getElementById("patternFormTitle").textContent = "Novo padrão";
+    document.getElementById("patternCancelBtn").style.display = "none";
+  });
+
+  document.getElementById("patternsTrashToggle").addEventListener("click", async () => {
+    const table = document.getElementById("deletedPatternsTable");
+    if (table.style.display === "none") {
+      const rows = await api("/api/presentations/patterns/deleted");
+      const body = document.getElementById("deletedPatternsBody");
+      body.innerHTML = "";
+      for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${r.furnitureType}</td><td>${r.attribute}</td><td>${r.recommendation}</td><td></td>`;
+        const restoreBtn = document.createElement("button");
+        restoreBtn.className = "ghost"; restoreBtn.textContent = "Restaurar";
+        restoreBtn.addEventListener("click", async () => {
+          await api(`/api/presentations/patterns/deleted/${r.logId}/restore`, { method: "POST" });
+          document.getElementById("patternsTrashToggle").click();
+          document.getElementById("patternsTrashToggle").click();
+          loadPatterns();
+        });
+        tr.lastElementChild.appendChild(restoreBtn);
+        body.appendChild(tr);
+      }
+      table.style.display = "table";
+    } else {
+      table.style.display = "none";
+    }
+  });
+
+  loadProjects();
+  loadInstitutional();
+  loadPatterns();
+</script>
+</body>
+</html>

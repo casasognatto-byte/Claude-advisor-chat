@@ -849,16 +849,24 @@ def health():
 
 
 # --- Páginas ----------------------------------------------------------------
+# Cache-Control: no-store em toda página cujo conteúdo depende do login —
+# sem isso, o navegador pode guardar em cache a versão "deslogado" (login.html)
+# de uma URL e continuar servindo ela mesmo depois que a pessoa loga de
+# verdade (só percebido testando: a URL parecia "travada" na tela de login
+# mesmo com sessão válida, porque o navegador nem chegava a pedir de novo).
+_NO_STORE = {"Cache-Control": "no-store"}
+
+
 @app.get("/")
 def index(request: Request):
     if current_user(request) is None:
-        return FileResponse(os.path.join(STATIC_DIR, "login.html"))
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+        return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_STORE)
 
 
 @app.get("/login")
 def login_page():
-    return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+    return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
 
 
 @app.get("/forgot")
@@ -875,10 +883,17 @@ def set_password_page():
 def admin_page(request: Request):
     user = current_user(request)
     if user is None:
-        return FileResponse(os.path.join(STATIC_DIR, "login.html"))
+        return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
     if user["role"] != "diretor":
         raise HTTPException(403, "Acesso restrito ao diretor.")
-    return FileResponse(os.path.join(STATIC_DIR, "admin.html"))
+    return FileResponse(os.path.join(STATIC_DIR, "admin.html"), headers=_NO_STORE)
+
+
+@app.get("/apresentacoes")
+def presentations_page(request: Request):
+    if current_user(request) is None:
+        return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
+    return FileResponse(os.path.join(STATIC_DIR, "apresentacoes.html"), headers=_NO_STORE)
 
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
