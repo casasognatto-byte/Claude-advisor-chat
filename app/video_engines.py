@@ -112,16 +112,21 @@ class VeoEngine:
         return video_resp.content
 
 
-# --- Luma Ray (Dream Machine API) -------------------------------------------
+# --- Luma Agents API (Ray 3.2) -----------------------------------------------
+# Reescrito em 2026-07-06: a API "Dream Machine" antiga (api.lumalabs.ai) dava
+# 403 "Not authenticated" com uma chave real e válida — a API atual (a que
+# realmente funciona) é a "Luma Agents", em agents.lumalabs.ai. Confirmado com
+# a própria chave do Davi: mesma chave, endpoint novo, resposta mudou de 403
+# pra 402 "Insufficient balance" (ou seja, a chave É válida, só falta crédito).
 class LumaEngine:
-    MODEL = "ray-2"
-    BASE = "https://api.lumalabs.ai/dream-machine/v1"
+    MODEL = "ray-3.2"
+    BASE = "https://agents.lumalabs.ai/v1"
 
     def _headers(self):
         key = os.environ.get("LUMA_API_KEY")
         if not key:
             raise VendorGenerationError("LUMA_API_KEY não configurada.")
-        return {"accept": "application/json", "authorization": f"Bearer {key}", "content-type": "application/json"}
+        return {"authorization": f"Bearer {key}", "content-type": "application/json"}
 
     async def start(self, job_id, image_bytes, mime, prompt, public_base_url):
         from app.video import _stage_image  # import local: evita ciclo com app.video
@@ -129,9 +134,15 @@ class LumaEngine:
         stage_token = _stage_image(job_id, image_bytes, mime)
         image_url = f"{public_base_url.rstrip('/')}/api/video/staged/{stage_token}"
         body = {
-            "prompt": prompt or "Anime esta imagem com um movimento de câmera sutil.",
             "model": self.MODEL,
-            "keyframes": {"frame0": {"type": "image", "url": image_url}},
+            "type": "video",
+            "prompt": prompt or "Anime esta imagem com um movimento de câmera sutil.",
+            "aspect_ratio": "16:9",
+            "video": {
+                "start_frame": {"url": image_url},
+                "resolution": "720p",
+                "duration": "5s",
+            },
         }
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(f"{self.BASE}/generations", json=body, headers=self._headers())
@@ -157,10 +168,10 @@ class LumaEngine:
         async with httpx.AsyncClient(timeout=30) as client:
             status_resp = await client.get(f"{self.BASE}/generations/{vendor_job_id}", headers=self._headers())
             data = status_resp.json()
-            video_url = (data.get("assets") or {}).get("video")
-            if not video_url:
+            output = data.get("output") or []
+            if not output or not output[0].get("url"):
                 raise VendorGenerationError("Luma: não achei a URL do vídeo pronto.")
-            video_resp = await client.get(video_url)
+            video_resp = await client.get(output[0]["url"])
         if video_resp.status_code >= 400:
             raise VendorGenerationError(f"Luma download falhou: {video_resp.status_code}")
         return video_resp.content
