@@ -91,6 +91,33 @@
   .neusa-toast .close { flex: none; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0; margin-left: auto; }
   .neusa-toast .close:hover { color: var(--gold); }
   @keyframes neusa-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+  .modal-overlay { position: fixed; inset: 0; background: rgba(11,26,16,.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  .modal-card { width: min(920px, 92vw); max-height: 86vh; background: var(--green-900); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .modal-title { font-family:'Benjamin'; font-size: 16px; }
+  .modal-close { background: transparent; border: none; color: var(--muted); font-size: 16px; cursor: pointer; }
+  .modal-close:hover { color: var(--gold); }
+  .prompts-body { display: flex; gap: 0; flex: 1; min-height: 0; }
+  .prompts-list-col { width: 280px; flex: none; border-right: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; min-height: 0; }
+  .prompts-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .prompts-tab { flex: 1; background: var(--green-700); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 7px; font-size: 12px; cursor: pointer; }
+  .prompts-tab.active { border-color: var(--gold); color: var(--gold); }
+  .prompts-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+  .prompt-item { text-align: left; background: var(--green-800); border: 1px solid transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: var(--cream); font-size: 12.5px; }
+  .prompt-item:hover { border-color: var(--gold); }
+  .prompt-item .cat { display: block; font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .prompts-edit-col { flex: 1; padding: 14px 18px; display: flex; flex-direction: column; overflow-y: auto; }
+  .prompts-edit-col label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
+  .prompts-edit-col label:first-child { margin-top: 0; }
+  .prompts-edit-col input, .prompts-edit-col select { width: 100%; background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13.5px; }
+  .prompts-edit-col textarea { width: 100%; background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: inherit; font-size: 13.5px; resize: vertical; flex: 1; }
+  .prompts-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .prompts-actions button { border-radius: 8px; padding: 8px 14px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: var(--green-700); color: var(--cream); }
+  .prompts-actions button.primary { background: var(--gold); color: #1c1408; border: none; }
+  .prompts-actions button.primary:hover { background: var(--gold-soft); }
+  .prompts-actions button.danger { color: #ff9d9d; border-color: #a55; }
+  .prompts-actions button.danger:hover { background: rgba(255,157,157,.1); }
 </style>
 </head>
 <body>
@@ -140,10 +167,41 @@
         <button class="icon-btn" id="imageBtn" title="Gerar render a partir de uma imagem">🖼️</button>
         <input type="file" id="videoFile" accept="image/*" style="display:none;" />
         <button class="icon-btn" id="videoBtn" title="Gerar vídeo a partir de uma imagem">🎬</button>
+        <button class="icon-btn" id="promptsBtn" title="Biblioteca de prompts">📝</button>
         <button id="send">Enviar</button>
       </div>
       <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas ao advisor aparecem em dourado.</div>
     </footer>
+  </div>
+
+  <div class="modal-overlay" id="promptsOverlay" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Biblioteca de prompts</div>
+        <button class="modal-close" id="promptsClose">✕</button>
+      </div>
+      <div class="prompts-body">
+        <div class="prompts-list-col">
+          <div class="prompts-tabs">
+            <button class="prompts-tab active" id="tabPredefined">Pré-definidos</button>
+            <button class="prompts-tab" id="tabPersonal">Meus e da equipe</button>
+          </div>
+          <select class="owner-filter" id="promptsOwnerFilter" style="margin:0 0 8px; display:none;"></select>
+          <div class="prompts-list" id="promptsList"></div>
+          <button class="new-btn" id="promptsNewBtn" style="margin:10px 0 0;">＋ Criar do zero</button>
+        </div>
+        <div class="prompts-edit-col">
+          <label>Nome</label>
+          <input id="promptName" placeholder="Nome do prompt" />
+          <label>Categoria (ambiente)</label>
+          <select id="promptCategory"><option value="">— sem categoria —</option></select>
+          <label>Texto do prompt</label>
+          <textarea id="promptContent" rows="10" placeholder="Escreva o prompt aqui…"></textarea>
+          <div class="prompts-actions" id="promptsActions"></div>
+          <div class="muted" id="promptsMsg" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -206,6 +264,8 @@
   // ---------- Estado ----------
   let conversations = [];   // {id,title,updatedAt,data|null,_new}
   let activeId = null;
+  let currentUser = "anon";
+  let currentRole = null;
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -535,6 +595,227 @@
     if (file) startImageJob(file);
   });
 
+  // ---------- Biblioteca de prompts (ícone no composer) ----------
+  let promptsCategories = [];
+  let promptsUsers = [];
+  let promptsTab = "predefined"; // "predefined" | "personal"
+  let promptsSelected = null;    // { kind: "predefined"|"personal", id, name, category, content, owner? }
+
+  const promptsOverlay = document.getElementById("promptsOverlay");
+  const promptsListEl = document.getElementById("promptsList");
+  const promptsOwnerFilter = document.getElementById("promptsOwnerFilter");
+  const promptNameEl = document.getElementById("promptName");
+  const promptCategoryEl = document.getElementById("promptCategory");
+  const promptContentEl = document.getElementById("promptContent");
+  const promptsActionsEl = document.getElementById("promptsActions");
+  const promptsMsgEl = document.getElementById("promptsMsg");
+
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : s;
+    return d.innerHTML;
+  }
+
+  async function openPrompts() {
+    promptsOverlay.style.display = "flex";
+    promptsMsgEl.textContent = "";
+    if (!promptsCategories.length) {
+      try { promptsCategories = await fetch("/api/prompts/categories").then(r => r.ok ? r.json() : []); } catch (_) {}
+      promptCategoryEl.innerHTML = '<option value="">— sem categoria —</option>';
+      for (const cat of promptsCategories) {
+        const opt = document.createElement("option");
+        opt.value = cat; opt.textContent = cat; promptCategoryEl.appendChild(opt);
+      }
+    }
+    if (!promptsUsers.length) {
+      try { promptsUsers = await fetch("/api/users").then(r => r.ok ? r.json() : []); } catch (_) {}
+    }
+    clearPromptForm();
+    await refreshPromptsList();
+  }
+
+  function closePrompts() { promptsOverlay.style.display = "none"; }
+
+  function switchPromptsTab(tab) {
+    promptsTab = tab;
+    document.getElementById("tabPredefined").classList.toggle("active", tab === "predefined");
+    document.getElementById("tabPersonal").classList.toggle("active", tab === "personal");
+    promptsOwnerFilter.style.display = tab === "personal" ? "block" : "none";
+    refreshPromptsList();
+  }
+
+  async function refreshPromptsList() {
+    if (promptsTab === "predefined") {
+      let items = [];
+      try { items = await fetch("/api/prompts/predefined").then(r => r.ok ? r.json() : []); } catch (_) {}
+      renderPromptsList(items, "predefined");
+    } else {
+      if (!promptsOwnerFilter.options.length) {
+        promptsOwnerFilter.innerHTML = "";
+        const optAll = document.createElement("option");
+        optAll.value = "all"; optAll.textContent = "Todos"; promptsOwnerFilter.appendChild(optAll);
+        for (const u of promptsUsers) {
+          const opt = document.createElement("option");
+          opt.value = u.username; opt.textContent = u.username; promptsOwnerFilter.appendChild(opt);
+        }
+        promptsOwnerFilter.value = "all";
+        promptsOwnerFilter.addEventListener("change", refreshPromptsList);
+      }
+      const owner = promptsOwnerFilter.value || "all";
+      let items = [];
+      try {
+        items = await fetch("/api/prompts/personal?owner=" + encodeURIComponent(owner)).then(r => r.ok ? r.json() : []);
+      } catch (_) {}
+      renderPromptsList(items, "personal");
+    }
+  }
+
+  function renderPromptsList(items, kind) {
+    promptsListEl.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "muted"; empty.style.fontSize = "12px"; empty.style.padding = "8px 2px";
+      empty.textContent = kind === "predefined" ? "Nenhum prompt padrão cadastrado ainda." : "Nenhum prompt pessoal ainda.";
+      promptsListEl.appendChild(empty);
+      return;
+    }
+    for (const p of items) {
+      const btn = document.createElement("button");
+      btn.className = "prompt-item";
+      const ownerTag = kind === "personal" ? ` · ${escapeHtml(p.owner)}` : "";
+      btn.innerHTML = `${escapeHtml(p.name)}<span class="cat">${escapeHtml(p.category || "Sem categoria")}${ownerTag}</span>`;
+      btn.addEventListener("click", () => selectPrompt(kind, p));
+      promptsListEl.appendChild(btn);
+    }
+  }
+
+  function selectPrompt(kind, p) {
+    promptsSelected = Object.assign({ kind }, p);
+    promptNameEl.value = p.name || "";
+    promptCategoryEl.value = p.category || "";
+    promptContentEl.value = p.content || "";
+    promptsMsgEl.textContent = "";
+    renderPromptsActions();
+  }
+
+  function clearPromptForm() {
+    promptsSelected = null;
+    promptNameEl.value = "";
+    promptCategoryEl.value = "";
+    promptContentEl.value = "";
+    promptsMsgEl.textContent = "";
+    renderPromptsActions();
+  }
+
+  function renderPromptsActions() {
+    promptsActionsEl.innerHTML = "";
+    const addBtn = (label, cls, handler) => {
+      const b = document.createElement("button");
+      b.textContent = label; if (cls) b.className = cls;
+      b.addEventListener("click", handler);
+      promptsActionsEl.appendChild(b);
+    };
+
+    const isOwnPersonal = !!(promptsSelected && promptsSelected.kind === "personal" && promptsSelected.owner === currentUser);
+    const isPredefined = !!(promptsSelected && promptsSelected.kind === "predefined");
+
+    addBtn("Usar este prompt", "primary", useSelectedPrompt);
+
+    if (isOwnPersonal) {
+      addBtn("Salvar alterações", "", () => savePersonalPrompt(promptsSelected.id));
+      addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
+    } else {
+      addBtn("Salvar como novo prompt meu", "", () => savePersonalPrompt(null));
+    }
+
+    if (currentRole === "diretor") {
+      addBtn(isPredefined ? "Salvar padrão da equipe" : "Salvar como padrão da equipe", "",
+        () => savePredefinedPrompt(isPredefined ? promptsSelected.id : null));
+      if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
+    }
+  }
+
+  function useSelectedPrompt() {
+    const text = promptContentEl.value.trim();
+    if (!text) { promptsMsgEl.textContent = "Escreva um texto antes de usar."; return; }
+    input.value = input.value ? input.value + "\n" + text : text;
+    autosize();
+    closePrompts();
+    input.focus();
+  }
+
+  async function savePersonalPrompt(existingId) {
+    const name = promptNameEl.value.trim();
+    const content = promptContentEl.value.trim();
+    const category = promptCategoryEl.value || null;
+    if (!name || !content) { promptsMsgEl.textContent = "Preencha nome e texto do prompt."; return; }
+    const body = { name, content, category };
+    if (!existingId) {
+      body.source_predefined_id = (promptsSelected && promptsSelected.kind === "predefined") ? promptsSelected.id : null;
+    }
+    try {
+      const url = existingId ? `/api/prompts/personal/${existingId}` : "/api/prompts/personal";
+      const res = await fetch(url, {
+        method: existingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível salvar."; return; }
+      promptsMsgEl.textContent = "Salvo.";
+      switchPromptsTab("personal");
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
+  }
+
+  async function deletePersonalPrompt(id) {
+    if (!confirm("Apagar este prompt pessoal?")) return;
+    try {
+      const res = await fetch(`/api/prompts/personal/${id}`, { method: "DELETE" });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível apagar."; return; }
+      clearPromptForm();
+      await refreshPromptsList();
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
+  }
+
+  async function savePredefinedPrompt(existingId) {
+    const name = promptNameEl.value.trim();
+    const content = promptContentEl.value.trim();
+    const category = promptCategoryEl.value;
+    if (!name || !content || !category) { promptsMsgEl.textContent = "Preencha nome, categoria e texto."; return; }
+    const body = { name, content, category };
+    try {
+      const url = existingId ? `/api/prompts/predefined/${existingId}` : "/api/prompts/predefined";
+      const res = await fetch(url, {
+        method: existingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (res.status === 403) { promptsMsgEl.textContent = "Só o diretor pode salvar padrões da equipe."; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível salvar."; return; }
+      promptsMsgEl.textContent = "Salvo como padrão da equipe.";
+      switchPromptsTab("predefined");
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
+  }
+
+  async function deletePredefinedPrompt(id) {
+    if (!confirm("Apagar este prompt padrão da equipe?")) return;
+    try {
+      const res = await fetch(`/api/prompts/predefined/${id}`, { method: "DELETE" });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível apagar."; return; }
+      clearPromptForm();
+      await refreshPromptsList();
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
+  }
+
+  document.getElementById("promptsBtn").addEventListener("click", openPrompts);
+  document.getElementById("promptsClose").addEventListener("click", closePrompts);
+  document.getElementById("tabPredefined").addEventListener("click", () => switchPromptsTab("predefined"));
+  document.getElementById("tabPersonal").addEventListener("click", () => switchPromptsTab("personal"));
+  document.getElementById("promptsNewBtn").addEventListener("click", clearPromptForm);
+
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }
   async function logout() { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; }
 
@@ -588,6 +869,7 @@
       const me = await fetch("/api/me").then(r => r.json());
       if (me && me.user) { user = me.user; role = me.role; }
     } catch (_) {}
+    currentUser = user; currentRole = role;
     document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
     if (role === "diretor") {
       document.getElementById("adminLink").style.display = "inline-block";
