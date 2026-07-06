@@ -1,12 +1,19 @@
 """Biblioteca de prompts para as arquitetas: prompts pré-definidos (padrão da
-Casa Sognatto, só o diretor mantém) e prompts pessoais (qualquer membro cria,
-todos veem — mesmo modelo de visibilidade das conversas).
+Casa Sognatto) e prompts pessoais (compartilhados, como as conversas).
 
-Regras de permissão:
-- Pré-definidos: leitura livre para qualquer membro logado; criar/editar/
-  apagar só o diretor.
-- Pessoais: leitura livre para qualquer membro logado (compartilhados, como
-  as conversas); criar qualquer um; editar/apagar só quem criou.
+Regras de permissão (atualizado em 2026-07-06 — antes só o diretor mexia nos
+pré-definidos; agora qualquer membro logado pode):
+- Pré-definidos: leitura, criação, edição e exclusão livres para qualquer
+  membro logado.
+- Pessoais: leitura livre para qualquer membro logado (compartilhados); criar
+  qualquer um; editar/apagar só quem criou.
+
+Rede de segurança pra essa liberação (pedido explícito do Davi, tipo
+"ctrl+z"): toda edição guarda o estado anterior em `prompt_versions` (pilha
+por prompt) e toda exclusão guarda uma cópia completa em `deleted_prompts`
+antes de apagar de verdade — dá pra desfazer uma edição ou restaurar uma
+exclusão acidental por qualquer usuário (exclusão/edição de pessoal continua
+restrita ao dono; pré-definido é livre pra todos, incluindo desfazer/restaurar).
 
 Imports de `app.main` ficam dentro das funções (não no topo do arquivo) para
 evitar import circular, já que `app.main` inclui este router.
@@ -87,6 +94,48 @@ def init_prompts_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_personal_prompts_owner "
                 "ON personal_prompts (owner_username, updated_at DESC);"
             )
+            # Pilha de versões anteriores — uma linha por edição, mais recente
+            # primeiro; "desfazer" remove a última linha e reaplica seu conteúdo.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS prompt_versions (
+                    id                SERIAL PRIMARY KEY,
+                    kind              TEXT NOT NULL,
+                    prompt_id         TEXT NOT NULL,
+                    name              TEXT NOT NULL,
+                    category          TEXT,
+                    content           TEXT NOT NULL,
+                    saved_by          TEXT NOT NULL,
+                    saved_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_prompt_versions_lookup "
+                "ON prompt_versions (kind, prompt_id, saved_at DESC);"
+            )
+            # Cópia completa de todo prompt apagado — permite restaurar.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS deleted_prompts (
+                    id                   SERIAL PRIMARY KEY,
+                    kind                 TEXT NOT NULL,
+                    original_id          TEXT NOT NULL,
+                    name                 TEXT NOT NULL,
+                    category             TEXT,
+                    content              TEXT NOT NULL,
+                    owner_or_creator     TEXT NOT NULL,
+                    source_predefined_id TEXT,
+                    deleted_by           TEXT NOT NULL,
+                    deleted_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    restored             BOOLEAN NOT NULL DEFAULT false
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_deleted_prompts_lookup "
+                "ON deleted_prompts (kind, restored, deleted_at DESC);"
+            )
     except Exception as e:
         print(f"[init_prompts_db] falha: {e}")
 
@@ -140,12 +189,102 @@ def list_personal(request: Request, owner: str | None = None):
     ]
 
 
-# --- Pré-definidos: só diretor cria/edita/apaga ------------------------------
+@router.get("/deleted")
+def list_deleted(request: Request, kind: str):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    if kind not in ("predefined", "personal"):
+        raise HTTPException(400, "kind inválido.")
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, original_id, name, category, owner_or_creator, deleted_by, deleted_at "
+            "FROM deleted_prompts WHERE kind = %s AND restored = false "
+            "ORDER BY deleted_at DESC LIMIT 50",
+            (kind,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "log_id": r[0], "original_id": r[1], "name": r[2], "category": r[3],
+            "owner_or_creator": r[4], "deleted_by": r[5],
+            "deleted_at": r[6].isoformat() if r[6] else None,
+        }
+        for r in rows
+    ]
+
+
+@router.post("/deleted/{log_id}/restore")
+def restore_deleted(log_id: int, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT kind, original_id, name, category, content, owner_or_creator, "
+            "source_predefined_id, restored FROM deleted_prompts WHERE id = %s",
+            (log_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Registro de exclusão não encontrado.")
+        kind, original_id, name, category, content, owner_or_creator, source_id, restored = row
+        if restored:
+            raise HTTPException(400, "Este prompt já foi restaurado.")
+        if kind == "personal" and owner_or_creator != user["username"]:
+            raise HTTPException(403, "Só quem criou pode restaurar este prompt pessoal.")
+
+        table = "predefined_prompts" if kind == "predefined" else "personal_prompts"
+        cur.execute(f"SELECT 1 FROM {table} WHERE id = %s", (original_id,))
+        new_id = original_id if not cur.fetchone() else (
+            ("pp" if kind == "predefined" else "up") + secrets.token_hex(8)
+        )
+        if kind == "predefined":
+            cur.execute(
+                "INSERT INTO predefined_prompts (id, name, category, content, created_by) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (new_id, name, category, content, owner_or_creator),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO personal_prompts "
+                "(id, name, category, content, owner_username, source_predefined_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (new_id, name, category, content, owner_or_creator, source_id),
+            )
+        cur.execute("UPDATE deleted_prompts SET restored = true WHERE id = %s", (log_id,))
+    return {"id": new_id}
+
+
+def _save_version(cur, kind: str, prompt_id: str, name: str, category, content: str, saved_by: str) -> None:
+    cur.execute(
+        "INSERT INTO prompt_versions (kind, prompt_id, name, category, content, saved_by) "
+        "VALUES (%s, %s, %s, %s, %s, %s)",
+        (kind, prompt_id, name, category, content, saved_by),
+    )
+
+
+def _pop_last_version(cur, kind: str, prompt_id: str):
+    cur.execute(
+        "SELECT id, name, category, content FROM prompt_versions "
+        "WHERE kind = %s AND prompt_id = %s ORDER BY saved_at DESC LIMIT 1",
+        (kind, prompt_id),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cur.execute("DELETE FROM prompt_versions WHERE id = %s", (row[0],))
+    return {"name": row[1], "category": row[2], "content": row[3]}
+
+
+# --- Pré-definidos: qualquer membro logado cria/edita/apaga ------------------
 @router.post("/predefined")
 def create_predefined(body: PredefinedPromptBody, request: Request):
-    from app.main import _db, _require_db, require_admin
+    from app.main import _db, _require_db, require_user
 
-    user = require_admin(request)
+    user = require_user(request)
     _require_db()
     if body.category not in CATEGORIES:
         raise HTTPException(400, "Categoria inválida.")
@@ -161,13 +300,20 @@ def create_predefined(body: PredefinedPromptBody, request: Request):
 
 @router.put("/predefined/{prompt_id}")
 def update_predefined(prompt_id: str, body: PredefinedPromptBody, request: Request):
-    from app.main import _db, _require_db, require_admin
+    from app.main import _db, _require_db, require_user
 
-    require_admin(request)
+    user = require_user(request)
     _require_db()
     if body.category not in CATEGORIES:
         raise HTTPException(400, "Categoria inválida.")
     with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT name, category, content FROM predefined_prompts WHERE id = %s", (prompt_id,)
+        )
+        current = cur.fetchone()
+        if not current:
+            raise HTTPException(404, "Prompt não encontrado.")
+        _save_version(cur, "predefined", prompt_id, current[0], current[1], current[2], user["username"])
         cur.execute(
             "UPDATE predefined_prompts SET name=%s, category=%s, content=%s, updated_at=now() "
             "WHERE id=%s",
@@ -176,13 +322,47 @@ def update_predefined(prompt_id: str, body: PredefinedPromptBody, request: Reque
     return {"ok": True}
 
 
-@router.delete("/predefined/{prompt_id}")
-def delete_predefined(prompt_id: str, request: Request):
-    from app.main import _db, _require_db, require_admin
+@router.post("/predefined/{prompt_id}/undo")
+def undo_predefined(prompt_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
 
-    require_admin(request)
+    require_user(request)
     _require_db()
     with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM predefined_prompts WHERE id = %s", (prompt_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Prompt não encontrado.")
+        prev = _pop_last_version(cur, "predefined", prompt_id)
+        if not prev:
+            raise HTTPException(404, "Não há edição anterior para desfazer.")
+        cur.execute(
+            "UPDATE predefined_prompts SET name=%s, category=%s, content=%s, updated_at=now() "
+            "WHERE id=%s",
+            (prev["name"], prev["category"], prev["content"], prompt_id),
+        )
+    return {"id": prompt_id, "name": prev["name"], "category": prev["category"], "content": prev["content"]}
+
+
+@router.delete("/predefined/{prompt_id}")
+def delete_predefined(prompt_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT name, category, content, created_by FROM predefined_prompts WHERE id = %s",
+            (prompt_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Prompt não encontrado.")
+        cur.execute(
+            "INSERT INTO deleted_prompts "
+            "(kind, original_id, name, category, content, owner_or_creator, deleted_by) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            ("predefined", prompt_id, row[0], row[1], row[2], row[3], user["username"]),
+        )
         cur.execute("DELETE FROM predefined_prompts WHERE id=%s", (prompt_id,))
     return {"ok": True}
 
@@ -230,11 +410,35 @@ def update_personal(prompt_id: str, body: PersonalPromptUpdate, request: Request
     with _db() as conn, conn.cursor() as cur:
         _require_owner(cur, prompt_id, user["username"])
         cur.execute(
+            "SELECT name, category, content FROM personal_prompts WHERE id = %s", (prompt_id,)
+        )
+        current = cur.fetchone()
+        _save_version(cur, "personal", prompt_id, current[0], current[1], current[2], user["username"])
+        cur.execute(
             "UPDATE personal_prompts SET name=%s, category=%s, content=%s, updated_at=now() "
             "WHERE id=%s",
             (body.name.strip()[:200], body.category, body.content, prompt_id),
         )
     return {"ok": True}
+
+
+@router.post("/personal/{prompt_id}/undo")
+def undo_personal(prompt_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        _require_owner(cur, prompt_id, user["username"])
+        prev = _pop_last_version(cur, "personal", prompt_id)
+        if not prev:
+            raise HTTPException(404, "Não há edição anterior para desfazer.")
+        cur.execute(
+            "UPDATE personal_prompts SET name=%s, category=%s, content=%s, updated_at=now() "
+            "WHERE id=%s",
+            (prev["name"], prev["category"], prev["content"], prompt_id),
+        )
+    return {"id": prompt_id, "name": prev["name"], "category": prev["category"], "content": prev["content"]}
 
 
 @router.delete("/personal/{prompt_id}")
@@ -245,5 +449,17 @@ def delete_personal(prompt_id: str, request: Request):
     _require_db()
     with _db() as conn, conn.cursor() as cur:
         _require_owner(cur, prompt_id, user["username"])
+        cur.execute(
+            "SELECT name, category, content, owner_username, source_predefined_id "
+            "FROM personal_prompts WHERE id = %s",
+            (prompt_id,),
+        )
+        row = cur.fetchone()
+        cur.execute(
+            "INSERT INTO deleted_prompts "
+            "(kind, original_id, name, category, content, owner_or_creator, source_predefined_id, deleted_by) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            ("personal", prompt_id, row[0], row[1], row[2], row[3], row[4], user["username"]),
+        )
         cur.execute("DELETE FROM personal_prompts WHERE id=%s", (prompt_id,))
     return {"ok": True}

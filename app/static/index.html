@@ -118,6 +118,12 @@
   .prompts-actions button.primary:hover { background: var(--gold-soft); }
   .prompts-actions button.danger { color: #ff9d9d; border-color: #a55; }
   .prompts-actions button.danger:hover { background: rgba(255,157,157,.1); }
+  .trash-toggle { width: 100%; background: transparent; border: 1px dashed var(--border); color: var(--muted); border-radius: 8px; padding: 6px; font-size: 11px; cursor: pointer; margin: 0 0 8px; }
+  .trash-toggle:hover { color: var(--gold); border-color: var(--gold); }
+  .deleted-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: default; text-align: left; }
+  .deleted-item .txt { flex: 1; min-width: 0; }
+  .restore-btn { flex: none; background: var(--gold); color: #1c1408; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; }
+  .restore-btn:hover { background: var(--gold-soft); }
 </style>
 </head>
 <body>
@@ -187,6 +193,7 @@
             <button class="prompts-tab" id="tabPersonal">Meus e da equipe</button>
           </div>
           <select class="owner-filter" id="promptsOwnerFilter" style="margin:0 0 8px; display:none;"></select>
+          <button class="trash-toggle" id="promptsTrashToggle">🗑 Excluídos recentes</button>
           <div class="prompts-list" id="promptsList"></div>
           <button class="new-btn" id="promptsNewBtn" style="margin:10px 0 0;">＋ Criar do zero</button>
         </div>
@@ -599,6 +606,7 @@
   let promptsCategories = [];
   let promptsUsers = [];
   let promptsTab = "predefined"; // "predefined" | "personal"
+  let promptsMode = "list";      // "list" | "trash"
   let promptsSelected = null;    // { kind: "predefined"|"personal", id, name, category, content, owner? }
 
   const promptsOverlay = document.getElementById("promptsOverlay");
@@ -619,6 +627,8 @@
   async function openPrompts() {
     promptsOverlay.style.display = "flex";
     promptsMsgEl.textContent = "";
+    promptsMode = "list";
+    document.getElementById("promptsTrashToggle").textContent = "🗑 Excluídos recentes";
     if (!promptsCategories.length) {
       try { promptsCategories = await fetch("/api/prompts/categories").then(r => r.ok ? r.json() : []); } catch (_) {}
       promptCategoryEl.innerHTML = '<option value="">— sem categoria —</option>';
@@ -638,13 +648,30 @@
 
   function switchPromptsTab(tab) {
     promptsTab = tab;
+    promptsMode = "list";
+    document.getElementById("promptsTrashToggle").textContent = "🗑 Excluídos recentes";
     document.getElementById("tabPredefined").classList.toggle("active", tab === "predefined");
     document.getElementById("tabPersonal").classList.toggle("active", tab === "personal");
     promptsOwnerFilter.style.display = tab === "personal" ? "block" : "none";
+    clearPromptForm();
+    refreshPromptsList();
+  }
+
+  function toggleTrash() {
+    promptsMode = promptsMode === "trash" ? "list" : "trash";
+    document.getElementById("promptsTrashToggle").textContent =
+      promptsMode === "trash" ? "← Voltar à lista" : "🗑 Excluídos recentes";
+    clearPromptForm();
     refreshPromptsList();
   }
 
   async function refreshPromptsList() {
+    if (promptsMode === "trash") {
+      let items = [];
+      try { items = await fetch("/api/prompts/deleted?kind=" + promptsTab).then(r => r.ok ? r.json() : []); } catch (_) {}
+      renderDeletedList(items);
+      return;
+    }
     if (promptsTab === "predefined") {
       let items = [];
       try { items = await fetch("/api/prompts/predefined").then(r => r.ok ? r.json() : []); } catch (_) {}
@@ -689,6 +716,44 @@
     }
   }
 
+  function renderDeletedList(items) {
+    promptsListEl.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "muted"; empty.style.fontSize = "12px"; empty.style.padding = "8px 2px";
+      empty.textContent = "Nada excluído recentemente.";
+      promptsListEl.appendChild(empty);
+      return;
+    }
+    for (const it of items) {
+      const row = document.createElement("div");
+      row.className = "prompt-item deleted-item";
+      const info = document.createElement("div");
+      info.className = "txt";
+      const when = it.deleted_at ? new Date(it.deleted_at).toLocaleString("pt-BR") : "";
+      const ownerTag = promptsTab === "personal" ? ` · de ${escapeHtml(it.owner_or_creator)}` : "";
+      info.innerHTML = `${escapeHtml(it.name)}<span class="cat">${escapeHtml(it.category || "Sem categoria")}${ownerTag} · apagado por ${escapeHtml(it.deleted_by)} em ${escapeHtml(when)}</span>`;
+      const btn = document.createElement("button");
+      btn.className = "restore-btn";
+      btn.textContent = "Restaurar";
+      btn.addEventListener("click", () => restoreDeleted(it.log_id));
+      row.appendChild(info);
+      row.appendChild(btn);
+      promptsListEl.appendChild(row);
+    }
+  }
+
+  async function restoreDeleted(logId) {
+    try {
+      const res = await fetch(`/api/prompts/deleted/${logId}/restore`, { method: "POST" });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (res.status === 403) { promptsMsgEl.textContent = "Só quem criou pode restaurar este prompt."; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível restaurar."; return; }
+      promptsMsgEl.textContent = "Restaurado.";
+      await refreshPromptsList();
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
+  }
+
   function selectPrompt(kind, p) {
     promptsSelected = Object.assign({ kind }, p);
     promptNameEl.value = p.name || "";
@@ -709,6 +774,7 @@
 
   function renderPromptsActions() {
     promptsActionsEl.innerHTML = "";
+    if (promptsMode === "trash") return;
     const addBtn = (label, cls, handler) => {
       const b = document.createElement("button");
       b.textContent = label; if (cls) b.className = cls;
@@ -718,21 +784,47 @@
 
     const isOwnPersonal = !!(promptsSelected && promptsSelected.kind === "personal" && promptsSelected.owner === currentUser);
     const isPredefined = !!(promptsSelected && promptsSelected.kind === "predefined");
+    const canUndo = !!(promptsSelected && promptsSelected.id && (isPredefined || isOwnPersonal));
 
     addBtn("Usar este prompt", "primary", useSelectedPrompt);
 
     if (isOwnPersonal) {
       addBtn("Salvar alterações", "", () => savePersonalPrompt(promptsSelected.id));
-      addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
     } else {
       addBtn("Salvar como novo prompt meu", "", () => savePersonalPrompt(null));
     }
 
-    if (currentRole === "diretor") {
-      addBtn(isPredefined ? "Salvar padrão da equipe" : "Salvar como padrão da equipe", "",
-        () => savePredefinedPrompt(isPredefined ? promptsSelected.id : null));
-      if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
+    // Pré-definidos agora são abertos a qualquer membro logado (não só o
+    // diretor) — mesma regra vale para editar, criar e apagar.
+    addBtn(isPredefined ? "Salvar padrão da equipe" : "Salvar como padrão da equipe", "",
+      () => savePredefinedPrompt(isPredefined ? promptsSelected.id : null));
+
+    if (canUndo) {
+      addBtn("↩ Desfazer última edição", "", () => undoPrompt(promptsSelected.kind, promptsSelected.id));
     }
+    if (isOwnPersonal) addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
+    if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
+  }
+
+  async function undoPrompt(kind, id) {
+    try {
+      const res = await fetch(`/api/prompts/${kind}/${id}/undo`, { method: "POST" });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (res.status === 403) { promptsMsgEl.textContent = "Você não pode desfazer este prompt."; return; }
+      if (res.status === 404) { promptsMsgEl.textContent = "Não há edição anterior para desfazer."; return; }
+      if (!res.ok) { promptsMsgEl.textContent = "Não foi possível desfazer."; return; }
+      const data = await res.json();
+      promptNameEl.value = data.name || "";
+      promptCategoryEl.value = data.category || "";
+      promptContentEl.value = data.content || "";
+      if (promptsSelected) {
+        promptsSelected.name = data.name;
+        promptsSelected.category = data.category;
+        promptsSelected.content = data.content;
+      }
+      promptsMsgEl.textContent = "Última edição desfeita.";
+      await refreshPromptsList();
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
   }
 
   function useSelectedPrompt() {
@@ -792,7 +884,6 @@
         body: JSON.stringify(body),
       });
       if (res.status === 401) { window.location.href = "/login"; return; }
-      if (res.status === 403) { promptsMsgEl.textContent = "Só o diretor pode salvar padrões da equipe."; return; }
       if (!res.ok) { promptsMsgEl.textContent = "Não foi possível salvar."; return; }
       promptsMsgEl.textContent = "Salvo como padrão da equipe.";
       switchPromptsTab("predefined");
@@ -815,6 +906,7 @@
   document.getElementById("tabPredefined").addEventListener("click", () => switchPromptsTab("predefined"));
   document.getElementById("tabPersonal").addEventListener("click", () => switchPromptsTab("personal"));
   document.getElementById("promptsNewBtn").addEventListener("click", clearPromptForm);
+  document.getElementById("promptsTrashToggle").addEventListener("click", toggleTrash);
 
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }
   async function logout() { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; }
