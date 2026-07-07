@@ -33,9 +33,15 @@ class StubImageEngine:
 
 
 class NanoBananaEngine:
-    # Nome exato do modelo pode mudar (o espaço tem versionamento rápido) —
-    # confirmar contra a doc oficial ao configurar uma GOOGLE_API_KEY real.
-    MODEL = os.environ.get("IMAGE_MODEL", "gemini-2.5-flash-image")
+    # Atualizado em 2026-07-07: "gemini-2.5-flash-image" é o Nano Banana
+    # ORIGINAL, já chamado de "legado" pela própria Google — testamos e o
+    # resultado não seguia bem nomes de material/marca específicos (ex.
+    # "Suvinil crômio", "quartzito Taj Mahal"). O Nano Banana Pro
+    # (gemini-3-pro-image) é anunciado com "consistência precisa de marca"
+    # como recurso principal — é o que usamos por padrão agora. Alternativa
+    # mais barata (~metade do preço, menos precisa): "gemini-3.1-flash-image"
+    # (Nano Banana 2). Configurável via IMAGE_MODEL sem precisar mexer aqui.
+    MODEL = os.environ.get("IMAGE_MODEL", "gemini-3-pro-image")
     BASE = "https://generativelanguage.googleapis.com/v1beta"
 
     def _api_key(self):
