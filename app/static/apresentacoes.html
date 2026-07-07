@@ -232,6 +232,12 @@
     return res.status === 204 ? null : res.json();
   }
 
+  function escapeHtml(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : s;
+    return d.innerHTML;
+  }
+
   // ---------------- Navegação por abas ----------------
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -253,7 +259,7 @@
     for (const p of rows) {
       const tr = document.createElement("tr");
       tr.className = "clickable";
-      tr.innerHTML = `<td>${p.clientName}</td><td>${p.imageCount}</td><td>${p.createdBy}</td><td></td>`;
+      tr.innerHTML = `<td>${escapeHtml(p.clientName)}</td><td>${p.imageCount}</td><td>${escapeHtml(p.createdBy)}</td><td></td>`;
       tr.addEventListener("click", () => openProject(p.id));
       body.appendChild(tr);
     }
@@ -318,15 +324,15 @@
           </div>
           <div class="style-panel">
             <label>Cor real do MDF/MDP (o Promob nem sempre é fiel)</label>
-            <input type="text" class="f-mdf" value="${(style.mdfColor || "").replace(/"/g, '&quot;')}" placeholder="Ex: Freijó Marchiano, conferido com amostra física" />
+            <input type="text" class="f-mdf" value="${escapeHtml(style.mdfColor || "")}" placeholder="Ex: Freijó Marchiano, conferido com amostra física" />
             <label>Iluminação geral (teto)</label>
             <div class="light-tones">
               ${LIGHT_TONES.map(([v, label]) => `<span class="chip tone-chip${style.ilumGeralTom === v ? " active" : ""}" data-tone="${v}">${label}</span>`).join("")}
             </div>
-            <textarea class="f-ilum-geral" placeholder="Detalhe (tipo de luminária, posição...)">${style.ilumGeralDetalhe || ""}</textarea>
+            <textarea class="f-ilum-geral" placeholder="Detalhe (tipo de luminária, posição...)">${escapeHtml(style.ilumGeralDetalhe || "")}</textarea>
             <label>Iluminação nos móveis</label>
             <select class="pattern-suggest"><option value="">— sugestões da biblioteca —</option></select>
-            <textarea class="f-ilum-moveis" placeholder="Ex: LED indireto no fundo do nicho">${style.ilumMoveis || ""}</textarea>
+            <textarea class="f-ilum-moveis" placeholder="Ex: LED indireto no fundo do nicho">${escapeHtml(style.ilumMoveis || "")}</textarea>
             <label>Decoração</label>
             <div class="decor-chips">${decorChipsHtml(style.decoracao)}</div>
             <div class="form-row">
@@ -460,7 +466,7 @@
       card.innerHTML = `
         <img src="/api/presentations/institutional/slides/${s.id}/file" loading="lazy" />
         <div class="card-body">
-          <input type="text" class="cap-input" value="${(s.caption || "").replace(/"/g, '&quot;')}" />
+          <input type="text" class="cap-input" value="${escapeHtml(s.caption || "")}" />
           <div class="row">
             <button class="ghost move-up">↑</button>
             <button class="ghost move-down">↓</button>
@@ -515,7 +521,7 @@
     document.getElementById("patternsEmpty").style.display = rows.length ? "none" : "block";
     for (const p of rows) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${p.furnitureType}</td><td>${p.attribute}</td><td>${p.recommendation}</td><td></td>`;
+      tr.innerHTML = `<td>${escapeHtml(p.furnitureType)}</td><td>${escapeHtml(p.attribute)}</td><td>${escapeHtml(p.recommendation)}</td><td></td>`;
       const td = tr.lastElementChild;
       const editBtn = document.createElement("button");
       editBtn.className = "ghost"; editBtn.textContent = "Editar";
@@ -578,7 +584,7 @@
       body.innerHTML = "";
       for (const r of rows) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${r.furnitureType}</td><td>${r.attribute}</td><td>${r.recommendation}</td><td></td>`;
+        tr.innerHTML = `<td>${escapeHtml(r.furnitureType)}</td><td>${escapeHtml(r.attribute)}</td><td>${escapeHtml(r.recommendation)}</td><td></td>`;
         const restoreBtn = document.createElement("button");
         restoreBtn.className = "ghost"; restoreBtn.textContent = "Restaurar";
         restoreBtn.addEventListener("click", async () => {
