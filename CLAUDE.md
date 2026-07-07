@@ -208,5 +208,13 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
 - Convites da equipe: Davi quer testar o envio de e-mail primeiro, antes de decidir sobre
   convites reais — continua represado, sem novidade.
 
+## Ideia registrada (07/07/2026): botão "Limpar" no composer de imagem/vídeo
+
+Davi viu várias mensagens de erro repetidas ("Falha ao gerar a imagem, tente novamente")
+acumulando na conversa durante tentativas sucessivas, e perguntou se precisamos de um botão
+"Limpar" (provavelmente pra limpar esses erros acumulados da tela, não as mensagens da
+conversa em si — confirmar escopo exato quando for implementar). Não implementado ainda,
+só registrado para avaliar em sessão futura.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.

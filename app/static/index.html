@@ -85,6 +85,14 @@
   .video-card video { max-width: 100%; border-radius: 8px; display: block; }
   .video-card .dl { display: inline-block; margin-top: 8px; font-size: 12px; color: var(--gold); text-decoration: none; }
   .video-card .dl:hover { color: var(--gold-soft); }
+  .video-card .redo-btn { display: inline-block; margin-top: 8px; margin-left: 10px; font-size: 12px; color: var(--gold); background: transparent; border: none; cursor: pointer; font-family: inherit; padding: 0; }
+  .video-card .redo-btn:hover { color: var(--gold-soft); }
+  .video-card .redo-panel { margin-top: 8px; }
+  .video-card .redo-panel textarea { width: 100%; background: var(--green-800); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 8px; font: inherit; font-size: 12.5px; resize: vertical; }
+  .video-card .redo-panel .row { display: flex; gap: 8px; margin-top: 6px; }
+  .video-card .redo-panel button { font-size: 11.5px; border-radius: 8px; padding: 5px 10px; cursor: pointer; font-family: inherit; }
+  .video-card .redo-panel .redo-confirm { background: var(--gold); color: #1c1408; border: none; }
+  .video-card .redo-panel .redo-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); }
 
   .neusa-toast { position: fixed; right: 20px; bottom: 20px; max-width: 300px; background: var(--advisor-bg); border: 1px solid var(--gold); border-left-width: 4px; border-radius: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.5; color: var(--cream); box-shadow: 0 12px 40px rgba(0,0,0,.4); z-index: 50; display: flex; gap: 10px; align-items: flex-start; animation: neusa-in .25s ease; }
   .neusa-toast .icon { flex: none; color: var(--gold); font-size: 18px; }
@@ -371,13 +379,74 @@
       const a = document.createElement("a");
       a.className = "dl"; a.href = "/api/image/file/" + item.jobId; a.download = "render.png"; a.textContent = "Baixar imagem";
       card.appendChild(img); card.appendChild(a);
+      appendRedoControls(card, item);
     } else if (item.status === "error") {
       const s = document.createElement("div"); s.className = "status"; s.textContent = "⚠️ " + (item.error || "Falha ao gerar a imagem, tente novamente.");
       card.appendChild(s);
+      appendRedoControls(card, item);
     } else {
       const s = document.createElement("div"); s.className = "status"; s.textContent = "Gerando render…";
       card.appendChild(s);
     }
+  }
+
+  function appendRedoControls(card, item) {
+    if (!item.jobId) return;
+    const redoBtn = document.createElement("button");
+    redoBtn.className = "redo-btn"; redoBtn.textContent = "🔁 Refazer";
+    const panel = document.createElement("div");
+    panel.className = "redo-panel"; panel.style.display = "none";
+    panel.innerHTML =
+      '<textarea class="redo-prompt" rows="3" placeholder="Prompt (edite se quiser antes de gerar de novo)"></textarea>' +
+      '<div class="row"><button class="redo-confirm">Gerar novamente</button><button class="redo-cancel">Cancelar</button></div>';
+    redoBtn.addEventListener("click", async () => {
+      const opening = panel.style.display === "none";
+      panel.style.display = opening ? "block" : "none";
+      if (opening && !panel.dataset.loaded) {
+        panel.dataset.loaded = "1";
+        try {
+          const data = await fetch("/api/image/jobs/" + item.jobId).then(r => r.json());
+          panel.querySelector(".redo-prompt").value = data.prompt || "";
+        } catch (_) {}
+      }
+    });
+    panel.querySelector(".redo-cancel").addEventListener("click", () => { panel.style.display = "none"; });
+    panel.querySelector(".redo-confirm").addEventListener("click", async () => {
+      const newPrompt = panel.querySelector(".redo-prompt").value;
+      panel.style.display = "none";
+      await redoImageJob(item.jobId, newPrompt);
+    });
+    card.appendChild(redoBtn);
+    card.appendChild(panel);
+  }
+
+  async function redoImageJob(originalJobId, prompt) {
+    let c = active(); if (!c) return;
+    await ensureData(c);
+    const item = { type: "image", jobId: null, status: "queued" };
+    c.data.view.push(item);
+    const r = document.createElement("div"); r.className = "msg assistant";
+    const card = document.createElement("div"); card.className = "video-card";
+    renderImageCardBody(card, item);
+    r.appendChild(card); chat.appendChild(r); scrollDown();
+
+    const form = new FormData();
+    form.append("prompt", prompt || "");
+    try {
+      const res = await fetch("/api/image/jobs/" + originalJobId + "/redo", { method: "POST", body: form });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { item.status = "error"; item.error = "Não foi possível iniciar a geração."; }
+      else {
+        const data = await res.json();
+        item.jobId = data.id; item.status = data.status || "queued";
+      }
+    } catch (e) {
+      item.status = "error"; item.error = "Erro de conexão.";
+    }
+    card.id = "image-" + item.jobId;
+    renderImageCardBody(card, item);
+    await persist(c);
+    if (item.jobId && (item.status === "queued" || item.status === "processing")) pollImageJob(item.jobId, item, c);
   }
   function renderChat() {
     chat.innerHTML = "";

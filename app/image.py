@@ -28,11 +28,12 @@ def _storage_root() -> str:
     return os.environ.get("IMAGE_STORAGE_DIR") or os.path.join(tempfile.gettempdir(), "casasognatto_image")
 
 
-def _image_path(job_id: str, mime: str) -> str:
+def _image_path(job_id: str, mime: str, kind: str = "out") -> str:
     d = _storage_root()
     os.makedirs(d, exist_ok=True)
     ext = _EXT_BY_MIME.get(mime, "png")
-    return os.path.join(d, f"{job_id}.{ext}")
+    suffix = "" if kind == "out" else f"_{kind}"
+    return os.path.join(d, f"{job_id}{suffix}.{ext}")
 
 
 def init_image_db() -> None:
@@ -53,11 +54,17 @@ def init_image_db() -> None:
                     status          TEXT NOT NULL DEFAULT 'queued',
                     error_message   TEXT,
                     image_path      TEXT,
+                    source_path     TEXT,
+                    source_mime     TEXT,
                     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
                     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
                 """
             )
+            # Migração aditiva — jobs criados antes do botão "Refazer" existir
+            # não têm a imagem de origem salva (não dá pra refazer esses).
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS source_path TEXT;")
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS source_mime TEXT;")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_jobs_user "
                 "ON image_jobs (username, created_at DESC);"
@@ -92,8 +99,8 @@ def _get_job(job_id: str) -> dict | None:
         return None
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT id, username, conversation_id, status, error_message, image_path "
-            "FROM image_jobs WHERE id = %s",
+            "SELECT id, username, conversation_id, status, error_message, image_path, "
+            "prompt, source_path, source_mime, engine FROM image_jobs WHERE id = %s",
             (job_id,),
         )
         row = cur.fetchone()
@@ -102,6 +109,7 @@ def _get_job(job_id: str) -> dict | None:
     return {
         "id": row[0], "username": row[1], "conversationId": row[2],
         "status": row[3], "error": row[4], "imagePath": row[5],
+        "prompt": row[6], "sourcePath": row[7], "sourceMime": row[8], "engine": row[9],
     }
 
 
@@ -141,17 +149,63 @@ async def create_job(
     image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(400, "Imagem vazia ou não enviada.")
+    mime = image.content_type or "image/jpeg"
     job_id = "i" + secrets.token_hex(8)
+
+    # Guarda a imagem original — sem isso não dá pra oferecer "Refazer" depois
+    # (a chamada ao fornecedor consome o arquivo, não fica guardado em lugar
+    # nenhum além daqui).
+    source_path = _image_path(job_id, mime, kind="src")
+    with open(source_path, "wb") as f:
+        f.write(image_bytes)
+
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or ""),
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_path, mime),
         )
-    asyncio.create_task(
-        _run_image_job(job_id, image_bytes, image.content_type or "image/jpeg", prompt or "", DEFAULT_ENGINE)
-    )
+    asyncio.create_task(_run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE))
     return {"id": job_id, "status": "queued"}
+
+
+@router.post("/jobs/{job_id}/redo")
+async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None)):
+    """Gera de novo a partir da MESMA imagem de origem de um job anterior,
+    opcionalmente com um prompt novo/ajustado. Vira um job novo e independente
+    (não sobrescreve o resultado anterior — a arquiteta pode comparar os dois)."""
+    from app.main import DB_ENABLED, _db, require_user
+
+    user = require_user(request)  # conversas são compartilhadas — qualquer membro pode refazer
+    if not DB_ENABLED:
+        raise HTTPException(503, "Banco de dados não configurado.")
+    original = _get_job(job_id)
+    if not original:
+        raise HTTPException(404, "Job original não encontrado.")
+    if not original["sourcePath"] or not os.path.exists(original["sourcePath"]):
+        raise HTTPException(400, "Imagem de origem não disponível pra refazer (job antigo demais).")
+
+    with open(original["sourcePath"], "rb") as f:
+        image_bytes = f.read()
+    mime = original["sourceMime"] or "image/jpeg"
+    final_prompt = prompt if prompt is not None else (original["prompt"] or "")
+
+    new_job_id = "i" + secrets.token_hex(8)
+    new_source_path = _image_path(new_job_id, mime, kind="src")
+    with open(new_source_path, "wb") as f:
+        f.write(image_bytes)
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (
+                new_job_id, user["username"], original["conversationId"],
+                DEFAULT_ENGINE, final_prompt, new_source_path, mime,
+            ),
+        )
+    asyncio.create_task(_run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE))
+    return {"id": new_job_id, "status": "queued", "prompt": final_prompt}
 
 
 @router.get("/jobs")
@@ -187,6 +241,8 @@ def get_job(job_id: str, request: Request):
         "status": job["status"],
         "error": job["error"],
         "ready": job["status"] == "done",
+        "prompt": job["prompt"],
+        "canRedo": bool(job["sourcePath"]),
     }
 
 
