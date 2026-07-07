@@ -228,6 +228,47 @@ def list_jobs(request: Request):
     ]
 
 
+@router.get("/jobs/download-all")
+def download_all_jobs(request: Request, conversation_id: str):
+    """Baixa em lote (.zip) todas as imagens já prontas de uma conversa —
+    registrado ANTES de /jobs/{job_id} de propósito, senão "download-all"
+    seria interpretado como um job_id."""
+    import io
+    import zipfile
+
+    from fastapi.responses import Response
+
+    from app.main import DB_ENABLED, _db, require_user
+
+    require_user(request)
+    if not DB_ENABLED:
+        raise HTTPException(503, "Banco de dados não configurado.")
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT image_path FROM image_jobs WHERE conversation_id = %s "
+            "AND status = 'done' AND image_path IS NOT NULL ORDER BY created_at",
+            (conversation_id,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(404, "Nenhuma imagem pronta nesta conversa.")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, (path,) in enumerate(rows, start=1):
+            if not path or not os.path.exists(path):
+                continue
+            ext = path.rsplit(".", 1)[-1] if "." in path else "png"
+            with open(path, "rb") as f:
+                zf.writestr(f"render_{i:02d}.{ext}", f.read())
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="renders.zip"'},
+    )
+
+
 @router.get("/jobs/{job_id}")
 def get_job(job_id: str, request: Request):
     from app.main import require_user

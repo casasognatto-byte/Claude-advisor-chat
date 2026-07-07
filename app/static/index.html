@@ -163,6 +163,7 @@
       <div class="h-left">
         <button class="toggle" id="toggle" title="Mostrar/ocultar conversas">☰</button>
         <div class="h-title" id="hTitle">Nova conversa</div>
+        <button class="toggle" id="downloadAllImagesBtn" title="Baixar todas as imagens geradas nesta conversa (.zip)">⬇</button>
       </div>
       <div class="tokens">
         Executor: <b><span id="tok-exec-in">0</span></b> / <b><span id="tok-exec-out">0</span></b><br>
@@ -670,6 +671,12 @@
     const files = Array.from(e.target.files || []);
     e.target.value = "";
     for (const file of files) await startImageJob(file);
+  });
+
+  document.getElementById("downloadAllImagesBtn").addEventListener("click", () => {
+    const c = active();
+    if (!c) return;
+    window.open("/api/image/jobs/download-all?conversation_id=" + encodeURIComponent(c.id), "_blank");
   });
 
   // ---------- Biblioteca de prompts (ícone no composer) ----------

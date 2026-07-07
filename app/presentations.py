@@ -422,6 +422,56 @@ async def upload_image(project_id: str, request: Request, image: UploadFile = Fi
     return {"id": image_id, "roomType": room_type, "roomLabel": ROOM_LABELS.get(room_type, room_type)}
 
 
+def _safe_filename_part(text: str) -> str:
+    return "".join(c if c.isalnum() or c in " _-" else "_" for c in text).strip() or "arquivo"
+
+
+@router.get("/{project_id}/images/download-all")
+def download_all_images(project_id: str, request: Request):
+    """Baixa em lote (.zip) todas as imagens de um projeto, na mesma ordem
+    natural exibida na tela (ambiente a ambiente)."""
+    import io
+    import zipfile
+
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT client_name FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+        cur.execute(
+            f"SELECT storage_key, room_type FROM project_images WHERE project_id = %s "
+            f"ORDER BY {_room_position_sql()}, created_at",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        raise HTTPException(404, "Nenhuma imagem neste projeto.")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for i, (storage_key, room_type) in enumerate(rows, start=1):
+            data = storage.get(storage_key)
+            if data is None:
+                continue
+            ext = storage_key.rsplit(".", 1)[-1] if "." in storage_key else "jpg"
+            label = _safe_filename_part(ROOM_LABELS.get(room_type, room_type))
+            zf.writestr(f"{i:02d}_{label}.{ext}", data)
+    buf.seek(0)
+    filename = _safe_filename_part(project[0]) + ".zip"
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/{project_id}/images/{image_id}/file")
 def get_image_file(project_id: str, image_id: str, request: Request):
     from fastapi.responses import Response

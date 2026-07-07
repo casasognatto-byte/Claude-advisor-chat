@@ -162,6 +162,7 @@
       <h2 id="projectTitle">—</h2>
       <div class="form-row">
         <button class="primary" id="viewDeckBtn">▶ Ver apresentação</button>
+        <a class="ghost" id="downloadAllBtn" style="text-decoration:none;">⬇ Baixar todas (.zip)</a>
         <button class="danger" id="deleteProjectBtn">Apagar projeto</button>
       </div>
       <h3>Enviar imagens (renders do Promob)</h3>
@@ -316,6 +317,7 @@
     currentProjectId = id;
     document.getElementById("projectsList").style.display = "none";
     document.getElementById("projectDetail").style.display = "block";
+    document.getElementById("downloadAllBtn").href = `/api/presentations/${id}/images/download-all`;
     await refreshProject();
   }
 
