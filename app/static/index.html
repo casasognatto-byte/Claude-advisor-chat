@@ -170,7 +170,7 @@
           <option value="a">Modo A</option>
           <option value="b">Modo B</option>
         </select>
-        <input type="file" id="imageFile" accept="image/*" style="display:none;" />
+        <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
         <button class="icon-btn" id="imageBtn" title="Gerar render a partir de uma imagem">🖼️</button>
         <input type="file" id="videoFile" accept="image/*" style="display:none;" />
         <button class="icon-btn" id="videoBtn" title="Gerar vídeo a partir de uma imagem">🎬</button>
@@ -597,10 +597,10 @@
   }
 
   document.getElementById("imageBtn").addEventListener("click", () => document.getElementById("imageFile").click());
-  document.getElementById("imageFile").addEventListener("change", (e) => {
-    const file = e.target.files[0];
+  document.getElementById("imageFile").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (file) startImageJob(file);
+    for (const file of files) await startImageJob(file);
   });
 
   // ---------- Biblioteca de prompts (ícone no composer) ----------
