@@ -106,5 +106,38 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
   `FORCE_RESET_DIRETOR_PASSWORD`), créditos na conta Luma, `GOOGLE_API_KEY` real, convites
   da equipe (aguardando autorização explícita).
 
+## Estado em 07/07/2026 (continuação — Biblioteca de Referências + decisão sobre domínio)
+
+- **Duas features novas enviadas ao GitHub nesta sessão** (`main` sincronizado em `7ec76a4`):
+  - Correção do rodapé da sidebar (`5d7222a`): os botões Sair/Apresentações/Painel
+    estouravam a largura da sidebar (270px) e o último ficava cortado sem quebrar linha —
+    era por isso que o Davi não achava o "Sair". Reordenado (Sair primeiro) + rodapé quebra
+    em duas linhas agora.
+  - **Biblioteca de referências entre projetos anteriores** (`7ec76a4`): botão "🔍 Ver
+    referências" no painel de estilo de cada imagem, abre busca (filtro por ambiente +
+    nome de cliente) em TODAS as imagens de TODOS os projetos, com "Usar como base" que
+    copia o estilo (MDF/iluminação/decoração) pra imagem atual. Contador `usage_count` em
+    `project_images` (incrementado a cada uso), ordena a lista por mais usado primeiro.
+    Endpoints: `GET /api/presentations/references/search`, `POST
+    /api/presentations/references/{image_id}/use`. Detalhe completo em
+    `../memory/project_neusa_apresentacoes_arquitetas.md`.
+- **Decisão sobre domínio (não implementar por enquanto)**: o Davi perguntou se dava pra
+  expor isso em `casasognatto.com.br/projetos` (domínio raiz, onde já roda o WordPress
+  institucional da empresa). Investigação (com acesso real ao wp-admin via browser):
+  - DNS do domínio raiz é gerenciado pela **KingHost**, não Cloudflare — descarta proxy via
+    Cloudflare Worker.
+  - Um caminho por path (`/projetos`) exigiria um plugin WordPress-ponte (reverse proxy em
+    PHP, mesmo padrão do plugin custom "Casa Sognatto Ponto de Equilíbrio" que já existe
+    nesse WP) **e** ensinar o app a funcionar sob um prefixo de caminho (hoje os paths
+    `/api/...`/`/static/...` são absolutos a partir da raiz — quebram se servidos sob
+    `/projetos` sem essa adaptação).
+  - **Decisão do Davi: manter como está.** A Biblioteca de Apresentações já vive em
+    `chat.casasognatto.com.br/apresentacoes`, com o mesmo login que já existe — não requer
+    nenhum trabalho de infraestrutura novo. Se o assunto voltar numa sessão futura, essa
+    investigação já está pronta, não precisa refazer.
+  - Nota lateral sem relação com o trabalho técnico: vi 3 cópias duplicadas do plugin
+    "Casa Sognatto Ponto de Equilíbrio" na lista de plugins do WordPress — parecem sobras
+    de teste, não mexi em nada.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
