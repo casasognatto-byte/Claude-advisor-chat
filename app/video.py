@@ -202,21 +202,15 @@ def _resolve_engine(user: dict, variant: str | None) -> str:
     return DEFAULT_ENGINE
 
 
-# --- Rotas --------------------------------------------------------------
-@router.post("/jobs")
-async def create_job(
-    request: Request,
-    image: UploadFile = File(...),
-    prompt: str = Form(""),
-    conversation_id: str | None = Form(None),
-    variant: str | None = Form(None),
-):
-    from app.main import DB_ENABLED, _db, require_user
+def create_video_job(user: dict, image_bytes: bytes, mime: str, prompt: str, conversation_id: str | None, variant: str | None) -> dict:
+    """Núcleo da criação de job, reaproveitado tanto pelo upload manual (chat
+    principal) quanto pelo botão "Gerar vídeo" em cima de uma imagem já
+    armazenada na Biblioteca de Apresentações (`app/presentations.py`) —
+    nesse segundo caso não existe upload nenhum, só bytes já em mãos."""
+    from app.main import DB_ENABLED, _db
 
-    user = require_user(request)
     if not DB_ENABLED:
         raise HTTPException(503, "Banco de dados não configurado.")
-    image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(400, "Imagem vazia ou não enviada.")
     engine = _resolve_engine(user, variant)
@@ -227,8 +221,24 @@ async def create_job(
             "VALUES (%s, %s, %s, %s, %s)",
             (job_id, user["username"], conversation_id, engine, prompt or ""),
         )
-    asyncio.create_task(_run_job(job_id, image_bytes, image.content_type or "image/jpeg", prompt or "", engine))
+    asyncio.create_task(_run_job(job_id, image_bytes, mime or "image/jpeg", prompt or "", engine))
     return {"id": job_id, "status": "queued"}
+
+
+# --- Rotas --------------------------------------------------------------
+@router.post("/jobs")
+async def create_job(
+    request: Request,
+    image: UploadFile = File(...),
+    prompt: str = Form(""),
+    conversation_id: str | None = Form(None),
+    variant: str | None = Form(None),
+):
+    from app.main import require_user
+
+    user = require_user(request)
+    image_bytes = await image.read()
+    return create_video_job(user, image_bytes, image.content_type or "image/jpeg", prompt or "", conversation_id, variant)
 
 
 @router.get("/jobs")

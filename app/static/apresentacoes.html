@@ -71,6 +71,10 @@
   .style-panel.open { display: block; }
   .style-panel textarea { width: 100%; min-height: 50px; resize: vertical; }
   .style-panel input[type=text] { width: 100%; }
+  .video-result { margin-top: 10px; }
+  .video-result video { max-width: 100%; border-radius: 8px; display: block; }
+  .video-result .dl { display: inline-block; margin-top: 6px; font-size: 12px; color: var(--gold); text-decoration: none; }
+  .video-result .dl:hover { color: var(--gold-soft); }
 
   /* --- Slides institucionais --- */
   .slide-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 14px; }
@@ -372,9 +376,11 @@
             <div class="form-row">
               <button class="primary save-style">Salvar</button>
               <button class="ghost view-references">🔍 Ver referências</button>
+              <button class="ghost gen-video">🎬 Gerar vídeo</button>
               <button class="danger delete-image">Apagar imagem</button>
               <span class="muted save-msg"></span>
             </div>
+            <div class="video-result"></div>
           </div>
         </div>`;
 
@@ -431,8 +437,46 @@
         refreshProject();
       });
 
+      card.querySelector(".gen-video").addEventListener("click", async (e) => {
+        e.target.disabled = true;
+        const resultEl = card.querySelector(".video-result");
+        resultEl.innerHTML = '<div class="muted">Gerando vídeo, pode levar 1-3 minutos…</div>';
+        try {
+          const job = await api(`/api/presentations/${currentProjectId}/images/${img.id}/video`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+          });
+          pollVideoResult(job.id, resultEl, e.target);
+        } catch (err) {
+          resultEl.innerHTML = '<div class="muted">⚠️ ' + err.message + '</div>';
+          e.target.disabled = false;
+        }
+      });
+
       grid.appendChild(card);
     }
+  }
+
+  async function pollVideoResult(jobId, resultEl, btn) {
+    for (let i = 0; i < 40; i++) {
+      let data;
+      try { data = await api("/api/video/jobs/" + jobId); }
+      catch (err) { resultEl.innerHTML = '<div class="muted">⚠️ ' + err.message + '</div>'; btn.disabled = false; return; }
+      if (data.status === "done") {
+        resultEl.innerHTML =
+          `<video src="/api/video/file/${jobId}" controls></video>` +
+          `<a class="dl" href="/api/video/file/${jobId}" download="video.mp4">Baixar vídeo</a>`;
+        btn.disabled = false;
+        return;
+      }
+      if (data.status === "error") {
+        resultEl.innerHTML = '<div class="muted">⚠️ ' + (data.error || "Falha ao gerar o vídeo.") + '</div>';
+        btn.disabled = false;
+        return;
+      }
+      await new Promise(r => setTimeout(r, 5000));
+    }
+    resultEl.innerHTML = '<div class="muted">Ainda processando — recarregue a página em instantes pra conferir.</div>';
+    btn.disabled = false;
   }
 
   async function fillPatternSuggestions(select) {
