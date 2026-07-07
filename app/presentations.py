@@ -108,6 +108,16 @@ def init_presentations_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_project_images_project "
                 "ON project_images (project_id);"
             )
+            # Contador de "usar como base" — biblioteca de referências entre
+            # projetos anteriores (ver memory/project_neusa_apresentacoes_arquitetas.md).
+            cur.execute(
+                "ALTER TABLE project_images ADD COLUMN IF NOT EXISTS "
+                "usage_count INTEGER NOT NULL DEFAULT 0;"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_project_images_room_usage "
+                "ON project_images (room_type, usage_count DESC);"
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS style_patterns (
@@ -308,6 +318,73 @@ def delete_project(project_id: str, request: Request):
     for key in keys:
         storage.delete(key)
     return {"ok": True}
+
+
+# --- Biblioteca de referências entre projetos anteriores ---------------------
+# Pedido do Davi (2026-07-07): cada arquiteta lembra dos próprios projetos
+# passados ("fiz uma cozinha assim pra fulana") e quer usar isso como
+# referência de estilo pra uma imagem nova, sem vasculhar manualmente todos
+# os projetos. Busca por ambiente (filtro mais útil — lembrança visual vem
+# primeiro pelo tipo de ambiente) e opcionalmente por nome de cliente.
+# Rotas com 2+ segmentos (ver nota em init_presentations_db/módulo) pra não
+# colidir com o catch-all GET /{project_id}.
+@router.get("/references/search")
+def search_references(request: Request, room_type: str | None = None, client: str | None = None):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    conditions = []
+    params: list = []
+    if room_type:
+        conditions.append("i.room_type = %s")
+        params.append(room_type)
+    if client:
+        conditions.append("p.client_name ILIKE %s")
+        params.append(f"%{client}%")
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            f"SELECT i.id, i.project_id, p.client_name, i.room_type, i.style, i.usage_count "
+            f"FROM project_images i JOIN client_projects p ON p.id = i.project_id "
+            f"{where} ORDER BY i.usage_count DESC, i.created_at DESC LIMIT 60",
+            params,
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "projectId": r[1],
+            "clientName": r[2],
+            "roomType": r[3],
+            "roomLabel": ROOM_LABELS.get(r[3], r[3]),
+            "style": r[4],
+            "usageCount": r[5],
+        }
+        for r in rows
+    ]
+
+
+@router.post("/references/{image_id}/use")
+def use_reference(image_id: str, request: Request):
+    """Marca uma imagem de referência como usada (incrementa o contador de
+    relevância) e devolve o estilo dela pra o frontend aplicar na imagem
+    atual — não salva nada na imagem atual, só devolve os dados; quem
+    persiste é o botão "Salvar" normal do painel de estilo."""
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE project_images SET usage_count = usage_count + 1 WHERE id = %s "
+            "RETURNING style",
+            (image_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Imagem de referência não encontrada.")
+    return {"style": row[0]}
 
 
 # --- Imagens do projeto -------------------------------------------------------

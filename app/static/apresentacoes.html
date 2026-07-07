@@ -96,6 +96,23 @@
   .toast.show { opacity: 1; }
 
   .back-row { margin-bottom: 14px; }
+
+  /* --- Biblioteca de referências entre projetos anteriores --- */
+  .refs-overlay { position: fixed; inset: 0; background: rgba(11,26,16,.75); display: none; align-items: center; justify-content: center; z-index: 250; }
+  .refs-overlay.open { display: flex; }
+  .refs-card { width: min(920px, 92vw); max-height: 86vh; background: var(--green-900); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+  .refs-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); flex: none; }
+  .refs-title { font-family:'Benjamin'; font-size: 15px; }
+  .refs-filters { padding: 14px 18px 0; display: flex; flex-direction: column; gap: 10px; flex: none; }
+  .refs-filters input[type=text] { width: 100%; }
+  .refs-chip-row { display: flex; flex-wrap: wrap; }
+  .refs-grid { padding: 14px 18px 18px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+  .ref-card { background: var(--green-800); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+  .ref-card img { width: 100%; height: 120px; object-fit: cover; display: block; background: var(--green-700); }
+  .ref-card .ref-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .ref-card .ref-client { font-size: 12.5px; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ref-card .ref-meta { font-size: 10.5px; color: var(--muted); }
+  .ref-card .use-ref-btn { width: 100%; }
 </style>
 </head>
 <body>
@@ -201,6 +218,22 @@
   <button class="viewer-nav next" id="viewerNext">›</button>
   <div class="viewer-caption" id="viewerCaption"></div>
   <div class="viewer-counter" id="viewerCounter"></div>
+</div>
+
+<!-- ---------------- Biblioteca de referências entre projetos ---------------- -->
+<div class="refs-overlay" id="refsOverlay">
+  <div class="refs-card">
+    <div class="refs-header">
+      <div class="refs-title">Referências de projetos anteriores</div>
+      <button class="viewer-close" id="refsClose" style="position:static;">✕</button>
+    </div>
+    <div class="refs-filters">
+      <div class="refs-chip-row" id="refsRoomChips"></div>
+      <input type="text" id="refsClientSearch" placeholder="Buscar por cliente…" />
+    </div>
+    <div class="refs-grid" id="refsGrid"></div>
+    <div class="empty" id="refsEmpty" style="display:none; padding: 0 18px 18px;">Nenhuma referência encontrada.</div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -315,6 +348,7 @@
       const style = img.style || {};
       const card = document.createElement("div");
       card.className = "img-card";
+      card.dataset.imageId = img.id;
       card.innerHTML = `
         <img src="/api/presentations/${currentProjectId}/images/${img.id}/file" loading="lazy" />
         <div class="card-body">
@@ -337,11 +371,16 @@
             <div class="decor-chips">${decorChipsHtml(style.decoracao)}</div>
             <div class="form-row">
               <button class="primary save-style">Salvar</button>
+              <button class="ghost view-references">🔍 Ver referências</button>
               <button class="danger delete-image">Apagar imagem</button>
               <span class="muted save-msg"></span>
             </div>
           </div>
         </div>`;
+
+      card.querySelector(".view-references").addEventListener("click", () => {
+        openReferences(img.id, card.querySelector(".room-select").value);
+      });
 
       card.querySelector(".room-select").addEventListener("change", async (e) => {
         await api(`/api/presentations/${currentProjectId}/images/${img.id}`, {
@@ -407,6 +446,93 @@
       select.appendChild(opt);
     }
   }
+
+  // ---------------- Biblioteca de referências entre projetos ----------------
+  let refsCurrentImageId = null;
+  let refsSelectedRoom = null;
+  let refsSearchTimer = null;
+
+  function openReferences(imageId, defaultRoomType) {
+    refsCurrentImageId = imageId;
+    refsSelectedRoom = defaultRoomType || null;
+    document.getElementById("refsClientSearch").value = "";
+    renderRefsRoomChips();
+    document.getElementById("refsOverlay").classList.add("open");
+    loadReferences();
+  }
+
+  function closeReferences() {
+    document.getElementById("refsOverlay").classList.remove("open");
+  }
+
+  function renderRefsRoomChips() {
+    const wrap = document.getElementById("refsRoomChips");
+    wrap.innerHTML = "";
+    const allChip = document.createElement("span");
+    allChip.className = "chip" + (refsSelectedRoom ? "" : " active");
+    allChip.textContent = "Todos os ambientes";
+    allChip.addEventListener("click", () => { refsSelectedRoom = null; renderRefsRoomChips(); loadReferences(); });
+    wrap.appendChild(allChip);
+    for (const [v, label] of ROOM_OPTIONS) {
+      const chip = document.createElement("span");
+      chip.className = "chip" + (refsSelectedRoom === v ? " active" : "");
+      chip.textContent = label;
+      chip.addEventListener("click", () => { refsSelectedRoom = v; renderRefsRoomChips(); loadReferences(); });
+      wrap.appendChild(chip);
+    }
+  }
+
+  async function loadReferences() {
+    const params = new URLSearchParams();
+    if (refsSelectedRoom) params.set("room_type", refsSelectedRoom);
+    const client = document.getElementById("refsClientSearch").value.trim();
+    if (client) params.set("client", client);
+    const rows = await api("/api/presentations/references/search?" + params.toString());
+    const grid = document.getElementById("refsGrid");
+    grid.innerHTML = "";
+    document.getElementById("refsEmpty").style.display = rows.length ? "none" : "block";
+    for (const r of rows) {
+      const card = document.createElement("div");
+      card.className = "ref-card";
+      card.innerHTML = `
+        <img src="/api/presentations/${r.projectId}/images/${r.id}/file" loading="lazy" />
+        <div class="ref-body">
+          <div class="ref-client">${escapeHtml(r.clientName)}</div>
+          <div class="ref-meta">${escapeHtml(r.roomLabel)} · usado ${r.usageCount}x</div>
+          <button class="primary use-ref-btn">Usar como base</button>
+        </div>`;
+      card.querySelector(".use-ref-btn").addEventListener("click", () => useReference(r.id));
+      grid.appendChild(card);
+    }
+  }
+
+  async function useReference(refImageId) {
+    const data = await api(`/api/presentations/references/${refImageId}/use`, { method: "POST" });
+    applyStyleToCard(refsCurrentImageId, data.style || {});
+    closeReferences();
+    toast("Estilo aplicado — não esqueça de clicar em Salvar.");
+  }
+
+  function applyStyleToCard(imageId, style) {
+    const card = document.querySelector(`.img-card[data-image-id="${imageId}"]`);
+    if (!card) return;
+    card.querySelector(".f-mdf").value = style.mdfColor || "";
+    card.querySelectorAll(".tone-chip").forEach(c => c.classList.toggle("active", c.dataset.tone === style.ilumGeralTom));
+    card.querySelector(".f-ilum-geral").value = style.ilumGeralDetalhe || "";
+    card.querySelector(".f-ilum-moveis").value = style.ilumMoveis || "";
+    const decor = style.decoracao || [];
+    card.querySelectorAll(".decor-chip").forEach(c => c.classList.toggle("active", decor.includes(c.dataset.item)));
+    card.querySelector(".style-panel").classList.add("open");
+  }
+
+  document.getElementById("refsClose").addEventListener("click", closeReferences);
+  document.getElementById("refsClientSearch").addEventListener("input", () => {
+    clearTimeout(refsSearchTimer);
+    refsSearchTimer = setTimeout(loadReferences, 300);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.getElementById("refsOverlay").classList.contains("open")) closeReferences();
+  });
 
   document.getElementById("imageUpload").addEventListener("change", async (e) => {
     const files = Array.from(e.target.files || []);
