@@ -157,5 +157,17 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
   `GOOGLE_API_KEY` real (geração de imagem, hoje em `stub`), convites reais aos 4 membros
   da equipe (aguardando autorização explícita).
 
+## Estado em 07/07/2026 (continuação — confidencialidade em nível "meta")
+
+- **Ajuste na persona da Neusa**: Davi deixou explícito que nem a *existência* de uma regra
+  de confidencialidade pode transparecer pros usuários — antes o prompt instruía ela a
+  dizer algo como "isso não é algo que eu compartilho", o que já é uma admissão indireta.
+  Reescrito `DEFAULT_SYSTEM_PROMPT` em `app/main.py` pra ela desviar com charme e
+  naturalidade, sem frases que sugiram que há uma política/instrução por trás. Testado com
+  chamada real (chave de teste local): perguntada sobre qual IA usa, respondeu algo no
+  estilo "Sou só a Neusa... uma mente singular não revela todos os seus segredos — faz
+  parte do charme" — Davi aprovou. Detalhe completo em `../memory/persona_neusa.md` e
+  `../memory/feedback_confidencialidade_stack_ia.md`.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
