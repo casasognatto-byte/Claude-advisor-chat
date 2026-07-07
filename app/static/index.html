@@ -38,9 +38,9 @@
   .conv .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
   .conv:hover .del { opacity: .8; }
   .conv .del:hover { color: #ff9d9d; background: rgba(255,255,255,.06); }
-  .sb-footer { border-top: 1px solid var(--border); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .sb-footer { border-top: 1px solid var(--border); padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
   .sb-footer .user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sb-footer .actions { display: flex; gap: 6px; flex: none; }
+  .sb-footer .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; width: 100%; }
   .sb-footer button, .sb-footer a { flex: none; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 11px; font-family:'Sackers'; letter-spacing:.1em; text-transform: uppercase; text-decoration: none; }
   .sb-footer button:hover, .sb-footer a:hover { border-color: var(--gold); color: var(--gold); }
 
@@ -143,9 +143,9 @@
     <div class="sb-footer">
       <span class="user" id="userLabel">—</span>
       <div class="actions">
+        <button id="logout">Sair</button>
         <a id="presentationsLink" href="/apresentacoes">Apresentações</a>
         <a id="adminLink" href="/admin" style="display:none;">Painel</a>
-        <button id="logout">Sair</button>
       </div>
     </div>
   </aside>
