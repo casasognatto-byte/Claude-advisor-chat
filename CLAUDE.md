@@ -169,5 +169,44 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
   parte do charme" — Davi aprovou. Detalhe completo em `../memory/persona_neusa.md` e
   `../memory/feedback_confidencialidade_stack_ia.md`.
 
+## Estado em 07/07/2026 (continuação — geração de imagem real, ainda pendente)
+
+- **Luma**: crédito adicionado pelo Davi na conta (`platform.lumalabs.ai`) — confirmado por
+  ele ("luma ok"). Ainda falta trocar `VIDEO_ENGINE` de `stub` pra `luma` no Render e testar
+  geração de vídeo real de ponta a ponta.
+- **Google/Nano Banana — EM ANDAMENTO, NÃO FUNCIONA AINDA**: Davi configurou
+  `IMAGE_ENGINE=nanobanana` no Render (confirmado "Deploy live" às 8:58 do dia 07/07) e
+  disse ter adicionado `GOOGLE_API_KEY` também, mas **testei em produção e deu erro**.
+  Confirmado direto no log do Render (`/logs`): `[image job ...] falha do fornecedor
+  (nanobanana): GOOGLE_API_KEY não configurada.` — ou seja, apesar do Davi achar que salvou,
+  a variável `GOOGLE_API_KEY` **não está presente** (ou o nome está diferente do exato
+  `GOOGLE_API_KEY`, com espaço/typo/case errado) no ambiente do serviço `advisor-chat` no
+  Render. Pedi pra ele conferir de novo — ainda sem resposta/confirmação de correção.
+  - A chave que ele forneceu no chat (não repetida aqui por segurança — nunca colar chaves
+    reais neste arquivo) foi validada e funciona (testei via curl local: `GET
+    /v1beta/models` retornou 200 e o modelo `gemini-2.5-flash-image` está disponível pra
+    essa chave). O problema não é a chave em si, é ela não estar chegando no ambiente de
+    produção.
+  - Rota de teste usada (útil pra repetir): logar como diretor, criar conversa via
+    `POST /api/conversations`, depois `POST /api/image/jobs` com uma imagem (multipart,
+    campos `image`+`prompt`+`conversation_id`), poll em `GET /api/image/jobs/{id}`,
+    conferir tamanho do arquivo em `GET /api/image/file/{id}` — 40 bytes exatos = ainda é
+    o stub; erro no log do Render (`/logs`, filtro "Application logs") mostra a causa real
+    sem vazar isso pro usuário final (mensagem genérica "Falha ao gerar a imagem" no chat).
+  - **Próximo passo**: conferir com o Davi se a variável `GOOGLE_API_KEY` está mesmo salva
+    no painel (nome exato, sem espaços) e testar de novo.
+- Davi também subiu 5 imagens reais de render elementar (Promob, cozinha) direto no chat
+  desta sessão — coladas na conversa, não ficam acessíveis como arquivo pra mim reusar
+  depois (só existem dentro do histórico da conversa). Se for testar de novo, pedir uma
+  imagem nova ou usar uma qualquer local.
+- **Achado à parte, não resolvido**: o botão "gerar render a partir de uma imagem" no
+  composer do chat principal (`index.html`, ícone 🖼️) **não permite selecionar várias
+  imagens de uma vez** (sem atributo `multiple` no input file) — Davi notou isso querendo
+  subir em lote. Ainda não implementado; possível melhoria futura (o upload da Biblioteca
+  de Apresentações, em `apresentacoes.html`, já tem `multiple` — só o ícone do chat
+  principal que não tem).
+- Convites da equipe: Davi quer testar o envio de e-mail primeiro, antes de decidir sobre
+  convites reais — continua represado, sem novidade.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
