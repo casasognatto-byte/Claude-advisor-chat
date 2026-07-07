@@ -199,12 +199,8 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
   desta sessão — coladas na conversa, não ficam acessíveis como arquivo pra mim reusar
   depois (só existem dentro do histórico da conversa). Se for testar de novo, pedir uma
   imagem nova ou usar uma qualquer local.
-- **Achado à parte, não resolvido**: o botão "gerar render a partir de uma imagem" no
-  composer do chat principal (`index.html`, ícone 🖼️) **não permite selecionar várias
-  imagens de uma vez** (sem atributo `multiple` no input file) — Davi notou isso querendo
-  subir em lote. Ainda não implementado; possível melhoria futura (o upload da Biblioteca
-  de Apresentações, em `apresentacoes.html`, já tem `multiple` — só o ícone do chat
-  principal que não tem).
+- ✅ **RESOLVIDO na sessão seguinte (07/07/2026)**: o botão 🖼️ do chat principal já
+  aceita múltiplas imagens de uma vez (commit `95be5a7`) — ver seção mais abaixo.
 - Convites da equipe: Davi quer testar o envio de e-mail primeiro, antes de decidir sobre
   convites reais — continua represado, sem novidade.
 
@@ -215,6 +211,82 @@ acumulando na conversa durante tentativas sucessivas, e perguntou se precisamos 
 "Limpar" (provavelmente pra limpar esses erros acumulados da tela, não as mensagens da
 conversa em si — confirmar escopo exato quando for implementar). Não implementado ainda,
 só registrado para avaliar em sessão futura.
+
+## Sessão de 07/07/2026 (curta, sem mudança de código) — confirma bug antigo ainda ativo
+
+Davi mostrou um screenshot com várias falhas seguidas de "Falha ao gerar a imagem, tente
+novamente" em produção — **consistente com a pendência já documentada acima** (seção
+"geração de imagem real, ainda pendente"): a suspeita de que `GOOGLE_API_KEY` não está
+configurada corretamente no Render continua a explicação mais provável, mas **não foi
+reinvestigada nesta sessão** (Davi não pediu, sessão foi majoritariamente sobre outro
+projeto — configuração do Conta Azul). Nenhuma mudança de código ou de variável de ambiente
+foi feita aqui. Próxima sessão que for mexer nisso: conferir de novo no painel do Render se
+`GOOGLE_API_KEY` está salva com o nome exato, sem espaço/typo, antes de re-testar.
+
+## Estado em 07/07/2026 (sessão seguinte — GOOGLE_API_KEY resolvido + 5 features novas)
+
+**Push feito, `main` e `origin/main` sincronizados em `7e2b45c`.** Tudo testado localmente
+(servidor real + Postgres real) antes do push, autorização de push confirmada verbalmente
+pelo Davi durante a sessão. Ordem cronológica:
+
+1. **GOOGLE_API_KEY resolvido de vez** (`79d0206`, feito pelo próprio Davi no painel do
+   Render): a variável estava salva **sem caixa alta** (não era bug de código nem da
+   chave). Depois de corrigir, apareceu um erro novo e esperado — `429 quota exceeded` do
+   lado do Google (conta no nível gratuito). Davi resolveu ativando **"API Gemini —
+   Pagamento por solicitação"** no Google AI Studio (não a assinatura mensal de
+   consumidor, que não libera cota de API de servidor). **Nano Banana funcionando de
+   verdade em produção agora.**
+2. **Upload múltiplo no ícone 🖼️ do chat** (`95be5a7`).
+3. **Troca do modelo de imagem padrão: Nano Banana → Nano Banana Pro** (`fdb0851`,
+   `gemini-3-pro-image`, default em `app/image_engines.py`). Achado real: o modelo antigo
+   (`gemini-2.5-flash-image`, "legado" segundo a própria Google) não seguiu bem nomes de
+   material/marca específicos no prompt do Davi ("Suvinil crômio", "quartzito Taj Mahal",
+   "MDF Nogueira Flórida") — o mesmo prompt, testado por ele direto no app do Gemini com
+   modelo mais novo, funcionou certinho. Nano Banana Pro é anunciado com "consistência
+   precisa de marca" como recurso principal; diferença de custo é pequena (~$0,13-0,24/
+   imagem vs ~$0,07-0,10 do Nano Banana 2). **Atenção**: se existir `IMAGE_MODEL` explícito
+   no painel do Render apontando pro modelo antigo, ele sobrescreve esse novo padrão do
+   código — vale conferir se não ficou nada configurado lá antes desta sessão.
+4. **Botão "🔁 Refazer" na geração de imagem** (`4d50020`, `app/image.py` +
+   `app/static/index.html`) — reaproveita a mesma imagem de origem (agora persistida por
+   job, colunas `source_path`/`source_mime` em `image_jobs`, migração aditiva — jobs
+   antigos sem essas colunas simplesmente não oferecem o botão) com o prompt anterior
+   pré-preenchido e editável antes de confirmar. Gera um job novo, não sobrescreve o
+   anterior (dá pra comparar as duas versões).
+5. **Botão "Gerar vídeo" direto de uma imagem já armazenada na Biblioteca de
+   Apresentações** (`d53110b`) — sem precisar baixar/reenviar pelo chat principal. Se não
+   vier prompt explícito, monta um automaticamente a partir do estilo já salvo daquela
+   imagem (cor do MDF, iluminação geral, iluminação dos móveis, decoração).
+   `app/video.py` ganhou `create_video_job()` extraído do endpoint `/jobs` original,
+   reaproveitável por qualquer lugar que já tenha os bytes da imagem em mãos. **Bug real
+   corrigido no caminho**: `asyncio.create_task` precisa de event loop rodando — a rota
+   nova em `presentations.py` era `def` síncrona (FastAPI despacha rotas sync numa
+   threadpool sem loop) e precisou virar `async def`.
+6. **Download em lote (.zip)** (`7e2b45c`) — botão "Baixar todas (.zip)" na tela do
+   projeto (Biblioteca de Apresentações, todas as imagens daquele cliente, nomeadas por
+   ordem+ambiente) e ícone ⬇ no cabeçalho do chat principal (renders da conversa atual).
+   Endpoints `GET /api/presentations/{id}/images/download-all` e `GET
+   /api/image/jobs/download-all?conversation_id=`, usando `zipfile` (builtin do Python,
+   sem dependência nova). **Nota de rota**: ambos foram registrados ANTES das rotas
+   `{job_id}`/`{image_id}` de mesmo prefixo, senão "download-all" seria capturado como um
+   ID pelo catch-all — mesmo cuidado já documentado em `presentations.py` desde a Fase 4.
+
+**Nota de ambiente recorrente**: o `.venv` foi quebrado de novo nesta sessão (a outra
+máquina recriou por cima via OneDrive, mesmo sintoma já documentado no topo deste
+arquivo). Também faltava `pillow` no venv recriado (só usado pra gerar imagens de teste
+sintéticas nesta sessão, não é dependência real do projeto — não precisa entrar no
+`requirements.txt`, só reinstalar no venv local se for gerar imagens de teste de novo).
+
+**Testes em produção pedidos ao Davi, ainda sem confirmação de resultado** no momento em
+que esta sessão foi encerrada: as 3 features de vídeo/download do item 4-6 acima, recém-
+publicadas — pedir pra ele testar (ou testar direto, se a próxima sessão tiver como logar
+em produção) antes de considerar essas três "confirmadas funcionando de verdade".
+
+**Pendências que continuam abertas, nada novo além do que já estava**: confirmar login do
+Davi em produção (`FORCE_RESET_DIRETOR_PASSWORD`), convites reais da equipe (aguardando
+autorização), botão "Limpar" pra erros acumulados na tela (ver seção acima), voz
+(STT/TTS) e montagem de vídeo final via Creatomate — ver
+`../memory/project_neusa_apresentacoes_arquitetas.md` pro roadmap completo e atualizado.
 
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
