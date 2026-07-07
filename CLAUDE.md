@@ -139,5 +139,23 @@ Isso não afeta produção (Render não usa esse `.venv`, só local).
     "Casa Sognatto Ponto de Equilíbrio" na lista de plugins do WordPress — parecem sobras
     de teste, não mexi em nada.
 
+## Estado em 07/07/2026 (fim de sessão — confirmado deploy, Davi saindo de novo)
+
+- **Tudo enviado e confirmado no ar**: `main` e `origin/main` sincronizados em `5346c7e`.
+  Conferido direto no painel do Render (Events do serviço `advisor-chat`) — os 3 deploys
+  mais recentes (`5346c7e`, `7ec76a4`, `5d7222a`) aparecem como **"Deploy live"**, sem erro.
+  Não precisa reconferir isso na próxima sessão a menos que algo pareça errado no site.
+- **Autorização temporária de push** (registrada só na minha memória local desta máquina,
+  não sincroniza): Davi autorizou fazer `git push` sem confirmar cada vez, **até
+  2026-07-08**. Se uma sessão nova abrir na outra máquina antes dessa data e ele repetir
+  algo do tipo "pode fazer tudo", isso é consistente com o que já valeu aqui — mas depois
+  de 2026-07-08 essa liberação expira e volta o protocolo padrão (confirmar cada push).
+  Isso **não** cobre convites reais da equipe nem ações de credencial/pagamento — essas
+  continuam exigindo autorização nomeada especificamente, sempre.
+- Pendências que continuam abertas, nenhuma nova hoje: confirmar créditos na conta Luma
+  (pra testar geração de vídeo de verdade e trocar `VIDEO_ENGINE` de `stub` pra `luma`),
+  `GOOGLE_API_KEY` real (geração de imagem, hoje em `stub`), convites reais aos 4 membros
+  da equipe (aguardando autorização explícita).
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
