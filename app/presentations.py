@@ -19,6 +19,7 @@ Mesma regra de sempre: imports de `app.main` ficam dentro das funções para
 evitar import circular. Arquivos ficam em `app.storage` (R2 ou disco local).
 """
 
+import io
 import json
 import secrets
 
@@ -91,6 +92,19 @@ def init_presentations_db() -> None:
                 );
                 """
             )
+            # Modelos de apresentação (08/07/2026) — cada projeto de cliente
+            # escolhe um modelo (Simonetto, Stimmo, por equipe etc); o deck
+            # final fica sempre abertura do modelo -> imagens do cliente ->
+            # fechamento do modelo. template_id fica nullable: projeto sem
+            # modelo escolhido cai no primeiro modelo existente (ver get_deck).
+            cur.execute("ALTER TABLE client_projects ADD COLUMN IF NOT EXISTS template_id TEXT;")
+            # Token pro link público animado — só existe depois que alguém
+            # gera o link pela primeira vez (nullable até lá).
+            cur.execute("ALTER TABLE client_projects ADD COLUMN IF NOT EXISTS share_token TEXT;")
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_projects_share_token "
+                "ON client_projects (share_token) WHERE share_token IS NOT NULL;"
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS project_images (
@@ -158,6 +172,16 @@ def init_presentations_db() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS presentation_templates (
+                    id         TEXT PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    created_by TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS institutional_slides (
                     id          TEXT PRIMARY KEY,
                     storage_key TEXT NOT NULL,
@@ -168,6 +192,33 @@ def init_presentations_db() -> None:
                     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
                 );
                 """
+            )
+            # Modelos de apresentação: cada slide pertence a um modelo e é
+            # marcado como abertura (padrão) ou fechamento. Slides antigos
+            # (de antes dos modelos existirem) migram pra um modelo "Geral"
+            # criado automaticamente, sem perder nada já cadastrado.
+            cur.execute("ALTER TABLE institutional_slides ADD COLUMN IF NOT EXISTS template_id TEXT;")
+            cur.execute("ALTER TABLE institutional_slides ADD COLUMN IF NOT EXISTS is_closing BOOLEAN NOT NULL DEFAULT false;")
+            cur.execute("SELECT COUNT(*) FROM institutional_slides WHERE template_id IS NULL")
+            orphan_count = cur.fetchone()[0]
+            if orphan_count:
+                cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+                default_row = cur.fetchone()
+                if default_row:
+                    default_template_id = default_row[0]
+                else:
+                    default_template_id = "tpl" + secrets.token_hex(6)
+                    cur.execute(
+                        "INSERT INTO presentation_templates (id, name, created_by) VALUES (%s, %s, %s)",
+                        (default_template_id, "Geral", "sistema"),
+                    )
+                cur.execute(
+                    "UPDATE institutional_slides SET template_id = %s WHERE template_id IS NULL",
+                    (default_template_id,),
+                )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_institutional_slides_template "
+                "ON institutional_slides (template_id, is_closing, sort_order);"
             )
     except Exception as e:
         print(f"[init_presentations_db] falha: {e}")
@@ -264,6 +315,239 @@ def list_projects(request: Request):
     ]
 
 
+# --- Modelos de apresentação (abertura + fechamento) ------------------------
+# Cada modelo (Simonetto, Stimmo, por equipe etc.) tem slides de abertura e
+# slides de fechamento. Um projeto de cliente escolhe um modelo; o deck final
+# é sempre abertura do modelo -> imagens do cliente -> fechamento do modelo
+# (ver get_deck). Editável por qualquer membro logado, como o resto da
+# Biblioteca de Apresentações.
+#
+# Registradas ANTES de /{project_id} (abaixo): rotas de um único segmento
+# como "/templates" seriam capturadas pelo catch-all "/{project_id}" se
+# viessem depois, já que o FastAPI/Starlette casa rotas na ordem de
+# registro (bug real encontrado e corrigido aqui: GET /templates devolvia
+# 404 "Projeto não encontrado").
+@router.get("/templates")
+def list_templates(request: Request):
+    from app.main import DB_ENABLED, _db, require_user
+
+    require_user(request)
+    if not DB_ENABLED:
+        return []
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT t.id, t.name, t.created_by, EXTRACT(EPOCH FROM t.created_at), COUNT(s.id) "
+            "FROM presentation_templates t LEFT JOIN institutional_slides s ON s.template_id = t.id "
+            "GROUP BY t.id ORDER BY t.created_at"
+        )
+        rows = cur.fetchall()
+    return [
+        {"id": r[0], "name": r[1], "createdBy": r[2], "createdAt": float(r[3]), "slideCount": r[4]}
+        for r in rows
+    ]
+
+
+class TemplateCreate(BaseModel):
+    name: str
+
+
+@router.post("/templates")
+def create_template(body: TemplateCreate, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Nome do modelo não pode ser vazio.")
+    template_id = "tpl" + secrets.token_hex(6)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO presentation_templates (id, name, created_by) VALUES (%s, %s, %s)",
+            (template_id, name, user["username"]),
+        )
+    return {"id": template_id, "name": name}
+
+
+@router.delete("/templates/{template_id}")
+def delete_template(template_id: str, request: Request):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT storage_key FROM institutional_slides WHERE template_id = %s", (template_id,))
+        slide_keys = [r[0] for r in cur.fetchall()]
+        cur.execute("DELETE FROM presentation_templates WHERE id = %s RETURNING id", (template_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Modelo não encontrado.")
+        cur.execute("DELETE FROM institutional_slides WHERE template_id = %s", (template_id,))
+        cur.execute("UPDATE client_projects SET template_id = NULL WHERE template_id = %s", (template_id,))
+    for key in slide_keys:
+        storage.delete(key)
+    return {"ok": True}
+
+
+@router.get("/templates/{template_id}/slides")
+def list_template_slides(template_id: str, request: Request):
+    from app.main import DB_ENABLED, _db, require_user
+
+    require_user(request)
+    if not DB_ENABLED:
+        return []
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, caption, sort_order, is_closing, created_by, EXTRACT(EPOCH FROM created_at) "
+            "FROM institutional_slides WHERE template_id = %s ORDER BY is_closing, sort_order",
+            (template_id,),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "id": r[0], "caption": r[1], "sortOrder": r[2], "isClosing": r[3],
+            "createdBy": r[4], "createdAt": float(r[5]),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/templates/{template_id}/slides")
+async def add_template_slide(
+    template_id: str, request: Request, image: UploadFile = File(...),
+    caption: str = Form(""), is_closing: bool = Form(False),
+):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    mime = image.content_type or "image/jpeg"
+    if mime not in _MIME_OK:
+        raise HTTPException(400, "Formato de imagem não suportado.")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(400, "Imagem vazia ou não enviada.")
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM presentation_templates WHERE id = %s", (template_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Modelo não encontrado.")
+
+    slide_id = "inst" + secrets.token_hex(8)
+    ext = mime.split("/", 1)[1]
+    storage_key = f"institutional/{slide_id}.{ext}"
+    storage.put(storage_key, image_bytes, mime)
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM institutional_slides "
+            "WHERE template_id = %s AND is_closing = %s",
+            (template_id, is_closing),
+        )
+        next_order = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO institutional_slides "
+            "(id, storage_key, mime, caption, sort_order, is_closing, created_by, template_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (slide_id, storage_key, mime, caption, next_order, is_closing, user["username"], template_id),
+        )
+    return {"id": slide_id, "sortOrder": next_order, "isClosing": is_closing}
+
+
+@router.get("/templates/{template_id}/slides/{slide_id}/file")
+def get_template_slide_file(template_id: str, slide_id: str, request: Request):
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT storage_key, mime FROM institutional_slides WHERE id = %s AND template_id = %s",
+            (slide_id, template_id),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Slide não encontrado.")
+    data = storage.get(row[0])
+    if data is None:
+        raise HTTPException(404, "Arquivo não disponível.")
+    return Response(content=data, media_type=row[1])
+
+
+class SlideUpdate(BaseModel):
+    caption: str | None = None
+    isClosing: bool | None = None
+
+
+@router.put("/templates/{template_id}/slides/{slide_id}")
+def update_template_slide(template_id: str, slide_id: str, body: SlideUpdate, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT caption, is_closing FROM institutional_slides WHERE id = %s AND template_id = %s",
+            (slide_id, template_id),
+        )
+        current = cur.fetchone()
+        if not current:
+            raise HTTPException(404, "Slide não encontrado.")
+        caption = body.caption if body.caption is not None else current[0]
+        is_closing = body.isClosing if body.isClosing is not None else current[1]
+        cur.execute(
+            "UPDATE institutional_slides SET caption = %s, is_closing = %s WHERE id = %s",
+            (caption, is_closing, slide_id),
+        )
+    return {"ok": True}
+
+
+@router.delete("/templates/{template_id}/slides/{slide_id}")
+def delete_template_slide(template_id: str, slide_id: str, request: Request):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT storage_key FROM institutional_slides WHERE id = %s AND template_id = %s",
+            (slide_id, template_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Slide não encontrado.")
+        cur.execute("DELETE FROM institutional_slides WHERE id = %s", (slide_id,))
+    storage.delete(row[0])
+    return {"ok": True}
+
+
+class SlideReorder(BaseModel):
+    orderedIds: list[str]
+
+
+@router.post("/templates/{template_id}/slides/reorder")
+def reorder_template_slides(template_id: str, body: SlideReorder, request: Request):
+    """Reordena dentro do mesmo grupo (abertura ou fechamento) — o frontend
+    manda uma lista por vez, já que os dois grupos têm contadores de ordem
+    independentes."""
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        for position, slide_id in enumerate(body.orderedIds):
+            cur.execute(
+                "UPDATE institutional_slides SET sort_order = %s WHERE id = %s AND template_id = %s",
+                (position, slide_id, template_id),
+            )
+    return {"ok": True}
+
+
 @router.get("/{project_id}")
 def get_project(project_id: str, request: Request):
     from app.main import _db, _require_db, require_user
@@ -294,13 +578,40 @@ def get_project(project_id: str, request: Request):
             }
             for r in cur.fetchall()
         ]
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT template_id, share_token FROM client_projects WHERE id = %s", (project_id,))
+        extra = cur.fetchone()
     return {
         "id": row[0],
         "clientName": row[1],
         "createdBy": row[2],
         "createdAt": float(row[3]),
         "images": images,
+        "templateId": extra[0] if extra else None,
+        "shareToken": extra[1] if extra else None,
     }
+
+
+class ProjectUpdate(BaseModel):
+    templateId: str | None = None
+
+
+@router.put("/{project_id}")
+def update_project(project_id: str, body: ProjectUpdate, request: Request):
+    """Por enquanto só troca o modelo de apresentação atribuído ao projeto —
+    ver `presentation_templates`."""
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE client_projects SET template_id = %s WHERE id = %s RETURNING id",
+            (body.templateId, project_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Projeto não encontrado.")
+    return {"ok": True}
 
 
 @router.delete("/{project_id}")
@@ -740,60 +1051,71 @@ def restore_pattern(log_id: int, request: Request):
     return {"ok": True, "id": new_id}
 
 
-# --- Slides institucionais (deck fixo: loja + indústria) ---------------------
-# Sempre os mesmos, em toda apresentação, editáveis por qualquer membro da
-# equipe. Ficam na frente dos slides de ambientes de cada projeto de cliente.
-@router.get("/institutional/slides")
-def list_institutional_slides(request: Request):
-    from app.main import DB_ENABLED, _db, require_user
-
-    require_user(request)
-    if not DB_ENABLED:
-        return []
-    with _db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT id, caption, sort_order, created_by, EXTRACT(EPOCH FROM created_at) "
-            "FROM institutional_slides ORDER BY sort_order"
-        )
-        rows = cur.fetchall()
-    return [
-        {"id": r[0], "caption": r[1], "sortOrder": r[2], "createdBy": r[3], "createdAt": float(r[4])}
-        for r in rows
-    ]
-
-
-@router.post("/institutional/slides")
-async def add_institutional_slide(request: Request, image: UploadFile = File(...), caption: str = Form("")):
-    from app import storage
+# --- Montagem do deck completo (abertura + ambientes do cliente + fechamento)
+@router.get("/{project_id}/deck")
+def get_deck(project_id: str, request: Request):
     from app.main import _db, _require_db, require_user
 
-    user = require_user(request)
+    require_user(request)
     _require_db()
-    mime = image.content_type or "image/jpeg"
-    if mime not in _MIME_OK:
-        raise HTTPException(400, "Formato de imagem não suportado.")
-    image_bytes = await image.read()
-    if not image_bytes:
-        raise HTTPException(400, "Imagem vazia ou não enviada.")
-
-    slide_id = "inst" + secrets.token_hex(8)
-    ext = mime.split("/", 1)[1]
-    storage_key = f"institutional/{slide_id}.{ext}"
-    storage.put(storage_key, image_bytes, mime)
-
     with _db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM institutional_slides")
-        next_order = cur.fetchone()[0]
+        cur.execute("SELECT client_name, template_id FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+
+        template_id = project[1]
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+
+        abertura, fechamento = [], []
+        if template_id:
+            cur.execute(
+                "SELECT id, caption, is_closing FROM institutional_slides "
+                "WHERE template_id = %s ORDER BY is_closing, sort_order",
+                (template_id,),
+            )
+            for r in cur.fetchall():
+                item = {
+                    "kind": "institucional", "id": r[0], "caption": r[1],
+                    "fileUrl": f"/api/presentations/templates/{template_id}/slides/{r[0]}/file",
+                }
+                (fechamento if r[2] else abertura).append(item)
+
         cur.execute(
-            "INSERT INTO institutional_slides (id, storage_key, mime, caption, sort_order, created_by) "
-            "VALUES (%s, %s, %s, %s, %s, %s)",
-            (slide_id, storage_key, mime, caption, next_order, user["username"]),
+            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
+            f"ORDER BY {_room_position_sql()}, created_at",
+            (project_id,),
         )
-    return {"id": slide_id, "sortOrder": next_order}
+        ambientes = [
+            {
+                "kind": "ambiente",
+                "id": r[0],
+                "caption": ROOM_LABELS.get(r[1], r[1]),
+                "fileUrl": f"/api/presentations/{project_id}/images/{r[0]}/file",
+            }
+            for r in cur.fetchall()
+        ]
+        slides = abertura + ambientes + fechamento
+    return {
+        "projectId": project_id, "clientName": project[0], "templateId": template_id, "slides": slides,
+    }
 
 
-@router.get("/institutional/slides/{slide_id}/file")
-def get_institutional_slide_file(slide_id: str, request: Request):
+def _open_slide_image(data: bytes):
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(data))
+    return img.convert("RGB")
+
+
+@router.get("/{project_id}/deck.pdf")
+def get_deck_pdf(project_id: str, request: Request):
+    """Exporta o deck (abertura + ambientes + fechamento) como PDF de imagens
+    fixas — usado quando a apresentação vira anexo de contrato, ao contrário
+    do link animado (ver /share/{token})."""
     from fastapi.responses import Response
 
     from app import storage
@@ -802,7 +1124,163 @@ def get_institutional_slide_file(slide_id: str, request: Request):
     require_user(request)
     _require_db()
     with _db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT storage_key, mime FROM institutional_slides WHERE id = %s", (slide_id,))
+        cur.execute("SELECT client_name, template_id FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+
+        template_id = project[1]
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+
+        abertura_keys, fechamento_keys = [], []
+        if template_id:
+            cur.execute(
+                "SELECT storage_key, is_closing FROM institutional_slides "
+                "WHERE template_id = %s ORDER BY is_closing, sort_order",
+                (template_id,),
+            )
+            for storage_key, is_closing in cur.fetchall():
+                (fechamento_keys if is_closing else abertura_keys).append(storage_key)
+
+        cur.execute(
+            f"SELECT storage_key FROM project_images WHERE project_id = %s "
+            f"ORDER BY {_room_position_sql()}, created_at",
+            (project_id,),
+        )
+        ambiente_keys = [r[0] for r in cur.fetchall()]
+
+    ordered_keys = abertura_keys + ambiente_keys + fechamento_keys
+    if not ordered_keys:
+        raise HTTPException(400, "Este projeto ainda não tem slides para exportar.")
+
+    images = []
+    for storage_key in ordered_keys:
+        data = storage.get(storage_key)
+        if data is not None:
+            images.append(_open_slide_image(data))
+    if not images:
+        raise HTTPException(400, "Nenhum arquivo de slide disponível para exportar.")
+
+    buf = io.BytesIO()
+    images[0].save(buf, format="PDF", save_all=True, append_images=images[1:])
+
+    client_name = project[0] or "apresentacao"
+    safe_name = "".join(c for c in client_name if c.isalnum() or c in " -_").strip() or "apresentacao"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.pdf"'},
+    )
+
+
+# --- Link público animado (sem login, mesmo padrão de token do staging Luma)-
+@router.post("/{project_id}/share")
+def create_share_link(project_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    token = secrets.token_urlsafe(24)
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE client_projects SET share_token = %s WHERE id = %s RETURNING id",
+            (token, project_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Projeto não encontrado.")
+    return {"shareToken": token, "shareUrl": f"/apresentacao/{token}"}
+
+
+@router.delete("/{project_id}/share")
+def revoke_share_link(project_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE client_projects SET share_token = NULL WHERE id = %s RETURNING id",
+            (project_id,),
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Projeto não encontrado.")
+    return {"ok": True}
+
+
+def _project_by_share_token(cur, token: str):
+    cur.execute(
+        "SELECT id, client_name, template_id FROM client_projects WHERE share_token = %s",
+        (token,),
+    )
+    return cur.fetchone()
+
+
+@router.get("/share/{token}/deck")
+def get_shared_deck(token: str):
+    from app.main import DB_ENABLED, _db
+
+    if not DB_ENABLED:
+        raise HTTPException(404, "Apresentação não encontrada.")
+    with _db() as conn, conn.cursor() as cur:
+        project = _project_by_share_token(cur, token)
+        if not project:
+            raise HTTPException(404, "Link inválido ou apresentação não encontrada.")
+        project_id, client_name, template_id = project
+
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+
+        abertura, fechamento = [], []
+        if template_id:
+            cur.execute(
+                "SELECT id, caption, is_closing FROM institutional_slides "
+                "WHERE template_id = %s ORDER BY is_closing, sort_order",
+                (template_id,),
+            )
+            for r in cur.fetchall():
+                item = {
+                    "kind": "institucional", "id": r[0], "caption": r[1],
+                    "fileUrl": f"/api/presentations/share/{token}/slide/{r[0]}/file",
+                }
+                (fechamento if r[2] else abertura).append(item)
+
+        cur.execute(
+            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
+            f"ORDER BY {_room_position_sql()}, created_at",
+            (project_id,),
+        )
+        ambientes = [
+            {
+                "kind": "ambiente", "id": r[0], "caption": ROOM_LABELS.get(r[1], r[1]),
+                "fileUrl": f"/api/presentations/share/{token}/image/{r[0]}/file",
+            }
+            for r in cur.fetchall()
+        ]
+    return {"clientName": client_name, "slides": abertura + ambientes + fechamento}
+
+
+@router.get("/share/{token}/slide/{slide_id}/file")
+def get_shared_slide_file(token: str, slide_id: str):
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import DB_ENABLED, _db
+
+    if not DB_ENABLED:
+        raise HTTPException(404, "Arquivo não encontrado.")
+    with _db() as conn, conn.cursor() as cur:
+        project = _project_by_share_token(cur, token)
+        if not project:
+            raise HTTPException(404, "Link inválido.")
+        cur.execute(
+            "SELECT storage_key, mime FROM institutional_slides WHERE id = %s AND template_id = %s",
+            (slide_id, project[2]),
+        )
         row = cur.fetchone()
     if not row:
         raise HTTPException(404, "Slide não encontrado.")
@@ -812,96 +1290,27 @@ def get_institutional_slide_file(slide_id: str, request: Request):
     return Response(content=data, media_type=row[1])
 
 
-class SlideUpdate(BaseModel):
-    caption: str | None = None
+@router.get("/share/{token}/image/{image_id}/file")
+def get_shared_image_file(token: str, image_id: str):
+    from fastapi.responses import Response
 
-
-@router.put("/institutional/slides/{slide_id}")
-def update_institutional_slide(slide_id: str, body: SlideUpdate, request: Request):
-    from app.main import _db, _require_db, require_user
-
-    require_user(request)
-    _require_db()
-    with _db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "UPDATE institutional_slides SET caption = %s WHERE id = %s",
-            (body.caption or "", slide_id),
-        )
-        cur.execute("SELECT 1 FROM institutional_slides WHERE id = %s", (slide_id,))
-        if not cur.fetchone():
-            raise HTTPException(404, "Slide não encontrado.")
-    return {"ok": True}
-
-
-@router.delete("/institutional/slides/{slide_id}")
-def delete_institutional_slide(slide_id: str, request: Request):
     from app import storage
-    from app.main import _db, _require_db, require_user
+    from app.main import DB_ENABLED, _db
 
-    require_user(request)
-    _require_db()
+    if not DB_ENABLED:
+        raise HTTPException(404, "Arquivo não encontrado.")
     with _db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT storage_key FROM institutional_slides WHERE id = %s", (slide_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(404, "Slide não encontrado.")
-        cur.execute("DELETE FROM institutional_slides WHERE id = %s", (slide_id,))
-    storage.delete(row[0])
-    return {"ok": True}
-
-
-class SlideReorder(BaseModel):
-    orderedIds: list[str]
-
-
-@router.post("/institutional/slides/reorder")
-def reorder_institutional_slides(body: SlideReorder, request: Request):
-    from app.main import _db, _require_db, require_user
-
-    require_user(request)
-    _require_db()
-    with _db() as conn, conn.cursor() as cur:
-        for position, slide_id in enumerate(body.orderedIds):
-            cur.execute(
-                "UPDATE institutional_slides SET sort_order = %s WHERE id = %s",
-                (position, slide_id),
-            )
-    return {"ok": True}
-
-
-# --- Montagem do deck completo (institucional + ambientes do cliente) -------
-@router.get("/{project_id}/deck")
-def get_deck(project_id: str, request: Request):
-    from app.main import _db, _require_db, require_user
-
-    require_user(request)
-    _require_db()
-    with _db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT client_name FROM client_projects WHERE id = %s", (project_id,))
-        project = cur.fetchone()
+        project = _project_by_share_token(cur, token)
         if not project:
-            raise HTTPException(404, "Projeto não encontrado.")
-
+            raise HTTPException(404, "Link inválido.")
         cur.execute(
-            "SELECT id, caption FROM institutional_slides ORDER BY sort_order"
+            "SELECT storage_key, mime FROM project_images WHERE id = %s AND project_id = %s",
+            (image_id, project[0]),
         )
-        slides = [
-            {"kind": "institucional", "id": r[0], "caption": r[1], "fileUrl": f"/api/presentations/institutional/slides/{r[0]}/file"}
-            for r in cur.fetchall()
-        ]
-
-        cur.execute(
-            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
-            f"ORDER BY {_room_position_sql()}, created_at",
-            (project_id,),
-        )
-        slides += [
-            {
-                "kind": "ambiente",
-                "id": r[0],
-                "caption": ROOM_LABELS.get(r[1], r[1]),
-                "fileUrl": f"/api/presentations/{project_id}/images/{r[0]}/file",
-            }
-            for r in cur.fetchall()
-        ]
-    return {"projectId": project_id, "clientName": project[0], "slides": slides}
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Imagem não encontrada.")
+    data = storage.get(row[0])
+    if data is None:
+        raise HTTPException(404, "Arquivo não disponível.")
+    return Response(content=data, media_type=row[1])

@@ -130,7 +130,7 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-view="projects">Projetos</button>
-  <button class="tab-btn" data-view="institutional">Slides institucionais</button>
+  <button class="tab-btn" data-view="templates">Modelos de apresentação</button>
   <button class="tab-btn" data-view="patterns">Padrões técnicos</button>
 </nav>
 
@@ -156,7 +156,18 @@
       <div class="form-row">
         <button class="primary" id="viewDeckBtn">▶ Ver apresentação</button>
         <a class="ghost" id="downloadAllBtn" style="text-decoration:none;">⬇ Baixar todas (.zip)</a>
+        <a class="ghost" id="downloadPdfBtn" style="text-decoration:none;">⬇ Baixar PDF</a>
         <button class="danger" id="deleteProjectBtn">Apagar projeto</button>
+      </div>
+      <div class="form-row">
+        <span class="muted">Modelo de apresentação:</span>
+        <select id="projectTemplateSelect"></select>
+      </div>
+      <div class="form-row">
+        <button class="ghost" id="shareBtn">🔗 Gerar link público</button>
+        <input type="text" id="shareUrlInput" readonly style="display:none; flex:1; min-width:240px;" />
+        <button class="ghost" id="shareCopyBtn" style="display:none;">Copiar</button>
+        <button class="danger" id="shareRevokeBtn" style="display:none;">Revogar link</button>
       </div>
       <h3>Enviar imagens (renders do Promob)</h3>
       <div class="form-row">
@@ -167,18 +178,46 @@
     </div>
   </section>
 
-  <!-- ---------------- Slides institucionais ---------------- -->
-  <section class="view" id="view-institutional">
-    <h2>Slides institucionais (loja + indústria)</h2>
-    <div class="muted">Sempre os mesmos em toda apresentação — entram antes das imagens de cada cliente.</div>
-    <h3>Adicionar slide</h3>
-    <div class="form-row">
-      <input type="file" id="instUpload" accept="image/*" />
-      <input type="text" id="instCaption" placeholder="Legenda (ex: Quem somos)" />
-      <button class="primary" id="instAddBtn">Adicionar</button>
+  <!-- ---------------- Modelos de apresentação ---------------- -->
+  <section class="view" id="view-templates">
+    <div id="templatesList">
+      <h2>Modelos de apresentação</h2>
+      <div class="muted">Cada modelo tem slides de abertura e de fechamento. Um projeto de cliente escolhe um modelo — o deck final fica sempre: abertura → imagens do cliente → fechamento.</div>
+      <table>
+        <thead><tr><th>Nome</th><th>Slides</th><th>Criado por</th><th></th></tr></thead>
+        <tbody id="templatesBody"></tbody>
+      </table>
+      <div class="empty" id="templatesEmpty" style="display:none;">Nenhum modelo ainda.</div>
+      <div class="form-row">
+        <input id="newTemplateName" placeholder="Nome do modelo (ex: Simonetto)" />
+        <button class="primary" id="createTemplateBtn">Criar modelo</button>
+      </div>
     </div>
-    <div class="slide-grid" id="instGrid"></div>
-    <div class="empty" id="instEmpty" style="display:none;">Nenhum slide institucional ainda.</div>
+
+    <div id="templateDetail" style="display:none;">
+      <div class="back-row"><button class="ghost" id="backToTemplates">← Voltar aos modelos</button></div>
+      <h2 id="templateTitle">—</h2>
+
+      <h3>Abertura</h3>
+      <div class="form-row">
+        <input type="file" id="openUpload" accept="image/*" />
+        <input type="text" id="openCaption" placeholder="Legenda" />
+        <button class="primary" id="openAddBtn">Adicionar</button>
+      </div>
+      <div class="slide-grid" id="openGrid"></div>
+      <div class="empty" id="openEmpty" style="display:none;">Nenhum slide de abertura ainda.</div>
+
+      <h3>Fechamento</h3>
+      <div class="form-row">
+        <input type="file" id="closeUpload" accept="image/*" />
+        <input type="text" id="closeCaption" placeholder="Legenda" />
+        <button class="primary" id="closeAddBtn">Adicionar</button>
+      </div>
+      <div class="slide-grid" id="closeGrid"></div>
+      <div class="empty" id="closeEmpty" style="display:none;">Nenhum slide de fechamento ainda.</div>
+
+      <button class="danger" id="deleteTemplateBtn" style="margin-top:18px;">Apagar modelo</button>
+    </div>
   </section>
 
   <!-- ---------------- Padrões técnicos ---------------- -->
@@ -311,8 +350,57 @@
     document.getElementById("projectsList").style.display = "none";
     document.getElementById("projectDetail").style.display = "block";
     document.getElementById("downloadAllBtn").href = `/api/presentations/${id}/images/download-all`;
+    document.getElementById("downloadPdfBtn").href = `/api/presentations/${id}/deck.pdf`;
     await refreshProject();
   }
+
+  function fillProjectTemplateSelect(selectedId) {
+    const select = document.getElementById("projectTemplateSelect");
+    select.innerHTML = '<option value="">— nenhum —</option>' +
+      allTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+    select.value = selectedId || "";
+  }
+
+  document.getElementById("projectTemplateSelect").addEventListener("change", async (e) => {
+    await api(`/api/presentations/${currentProjectId}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateId: e.target.value || null }),
+    });
+  });
+
+  function renderShareState(token) {
+    const urlInput = document.getElementById("shareUrlInput");
+    const copyBtn = document.getElementById("shareCopyBtn");
+    const revokeBtn = document.getElementById("shareRevokeBtn");
+    const genBtn = document.getElementById("shareBtn");
+    if (token) {
+      urlInput.value = window.location.origin + "/apresentacao/" + token;
+      urlInput.style.display = "inline-block";
+      copyBtn.style.display = "inline-block";
+      revokeBtn.style.display = "inline-block";
+      genBtn.style.display = "none";
+    } else {
+      urlInput.style.display = "none";
+      copyBtn.style.display = "none";
+      revokeBtn.style.display = "none";
+      genBtn.style.display = "inline-block";
+    }
+  }
+
+  document.getElementById("shareBtn").addEventListener("click", async () => {
+    const data = await api(`/api/presentations/${currentProjectId}/share`, { method: "POST" });
+    renderShareState(data.shareToken);
+  });
+  document.getElementById("shareCopyBtn").addEventListener("click", () => {
+    const input = document.getElementById("shareUrlInput");
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => toast("Link copiado.")).catch(() => {});
+  });
+  document.getElementById("shareRevokeBtn").addEventListener("click", async () => {
+    if (!confirm("Revogar o link público? Quem já tem o link deixa de conseguir acessar.")) return;
+    await api(`/api/presentations/${currentProjectId}/share`, { method: "DELETE" });
+    renderShareState(null);
+  });
 
   document.getElementById("backToProjects").addEventListener("click", () => {
     currentProjectId = null;
@@ -341,6 +429,8 @@
   async function refreshProject() {
     const project = await api("/api/presentations/" + currentProjectId);
     document.getElementById("projectTitle").textContent = project.clientName;
+    fillProjectTemplateSelect(project.templateId);
+    renderShareState(project.shareToken);
     const grid = document.getElementById("imgGrid");
     grid.innerHTML = "";
     for (const img of project.images) {
@@ -580,17 +670,72 @@
     if (e.key === "ArrowLeft") document.getElementById("viewerPrev").click();
   });
 
-  // ---------------- Slides institucionais ----------------
-  async function loadInstitutional() {
-    const slides = await api("/api/presentations/institutional/slides");
-    const grid = document.getElementById("instGrid");
+  // ---------------- Modelos de apresentação ----------------
+  let currentTemplateId = null;
+  let allTemplates = [];
+
+  async function loadTemplates() {
+    allTemplates = await api("/api/presentations/templates");
+    const body = document.getElementById("templatesBody");
+    body.innerHTML = "";
+    document.getElementById("templatesEmpty").style.display = allTemplates.length ? "none" : "block";
+    for (const t of allTemplates) {
+      const tr = document.createElement("tr");
+      tr.className = "clickable";
+      tr.innerHTML = `<td>${escapeHtml(t.name)}</td><td>${t.slideCount}</td><td>${escapeHtml(t.createdBy)}</td><td></td>`;
+      tr.addEventListener("click", () => openTemplate(t.id));
+      body.appendChild(tr);
+    }
+    if (currentProjectId) fillProjectTemplateSelect();
+  }
+
+  document.getElementById("createTemplateBtn").addEventListener("click", async () => {
+    const input = document.getElementById("newTemplateName");
+    const name = input.value.trim();
+    if (!name) return;
+    const t = await api("/api/presentations/templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    input.value = "";
+    await loadTemplates();
+    openTemplate(t.id);
+  });
+
+  async function openTemplate(id) {
+    currentTemplateId = id;
+    document.getElementById("templatesList").style.display = "none";
+    document.getElementById("templateDetail").style.display = "block";
+    const t = allTemplates.find(x => x.id === id);
+    document.getElementById("templateTitle").textContent = t ? t.name : "—";
+    await loadTemplateSlides();
+  }
+
+  document.getElementById("backToTemplates").addEventListener("click", () => {
+    currentTemplateId = null;
+    document.getElementById("templateDetail").style.display = "none";
+    document.getElementById("templatesList").style.display = "block";
+    loadTemplates();
+  });
+
+  document.getElementById("deleteTemplateBtn").addEventListener("click", async () => {
+    if (!confirm("Apagar este modelo e todos os slides dele? Não tem como desfazer.")) return;
+    await api(`/api/presentations/templates/${currentTemplateId}`, { method: "DELETE" });
+    document.getElementById("backToTemplates").click();
+  });
+
+  async function loadTemplateSlides() {
+    const slides = await api(`/api/presentations/templates/${currentTemplateId}/slides`);
+    renderSlideGroup(slides.filter(s => !s.isClosing), "openGrid", "openEmpty");
+    renderSlideGroup(slides.filter(s => s.isClosing), "closeGrid", "closeEmpty");
+  }
+
+  function renderSlideGroup(slides, gridId, emptyId) {
+    const grid = document.getElementById(gridId);
     grid.innerHTML = "";
-    document.getElementById("instEmpty").style.display = slides.length ? "none" : "block";
+    document.getElementById(emptyId).style.display = slides.length ? "none" : "block";
     slides.forEach((s, i) => {
       const card = document.createElement("div");
       card.className = "slide-card";
       card.innerHTML = `
-        <img src="/api/presentations/institutional/slides/${s.id}/file" loading="lazy" />
+        <img src="/api/presentations/templates/${currentTemplateId}/slides/${s.id}/file" loading="lazy" />
         <div class="card-body">
           <input type="text" class="cap-input" value="${escapeHtml(s.caption || "")}" />
           <div class="row">
@@ -600,42 +745,46 @@
           </div>
         </div>`;
       card.querySelector(".cap-input").addEventListener("change", async (e) => {
-        await api(`/api/presentations/institutional/slides/${s.id}`, {
+        await api(`/api/presentations/templates/${currentTemplateId}/slides/${s.id}`, {
           method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ caption: e.target.value }),
         });
       });
-      card.querySelector(".move-up").addEventListener("click", () => reorderInstitutional(slides, i, i - 1));
-      card.querySelector(".move-down").addEventListener("click", () => reorderInstitutional(slides, i, i + 1));
+      card.querySelector(".move-up").addEventListener("click", () => reorderSlideGroup(slides, i, i - 1));
+      card.querySelector(".move-down").addEventListener("click", () => reorderSlideGroup(slides, i, i + 1));
       card.querySelector(".del-slide").addEventListener("click", async () => {
-        if (!confirm("Apagar este slide institucional?")) return;
-        await api(`/api/presentations/institutional/slides/${s.id}`, { method: "DELETE" });
-        loadInstitutional();
+        if (!confirm("Apagar este slide?")) return;
+        await api(`/api/presentations/templates/${currentTemplateId}/slides/${s.id}`, { method: "DELETE" });
+        loadTemplateSlides();
       });
       grid.appendChild(card);
     });
   }
 
-  async function reorderInstitutional(slides, from, to) {
+  async function reorderSlideGroup(slides, from, to) {
     if (to < 0 || to >= slides.length) return;
     const ids = slides.map(s => s.id);
     [ids[from], ids[to]] = [ids[to], ids[from]];
-    await api("/api/presentations/institutional/slides/reorder", {
+    await api(`/api/presentations/templates/${currentTemplateId}/slides/reorder`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderedIds: ids }),
     });
-    loadInstitutional();
+    loadTemplateSlides();
   }
 
-  document.getElementById("instAddBtn").addEventListener("click", async () => {
-    const fileInput = document.getElementById("instUpload");
-    const caption = document.getElementById("instCaption").value.trim();
+  document.getElementById("openAddBtn").addEventListener("click", () => addTemplateSlide(false));
+  document.getElementById("closeAddBtn").addEventListener("click", () => addTemplateSlide(true));
+
+  async function addTemplateSlide(isClosing) {
+    const fileInput = document.getElementById(isClosing ? "closeUpload" : "openUpload");
+    const captionInput = document.getElementById(isClosing ? "closeCaption" : "openCaption");
     if (!fileInput.files.length) { toast("Escolha uma imagem."); return; }
     const fd = new FormData();
     fd.append("image", fileInput.files[0]);
-    fd.append("caption", caption);
-    await fetch("/api/presentations/institutional/slides", { method: "POST", body: fd });
-    fileInput.value = ""; document.getElementById("instCaption").value = "";
-    loadInstitutional();
-  });
+    fd.append("caption", captionInput.value.trim());
+    fd.append("is_closing", isClosing ? "true" : "false");
+    await fetch(`/api/presentations/templates/${currentTemplateId}/slides`, { method: "POST", body: fd });
+    fileInput.value = ""; captionInput.value = "";
+    loadTemplateSlides();
+  }
 
   // ---------------- Padrões técnicos ----------------
   let editingPatternId = null;
@@ -729,7 +878,7 @@
   });
 
   loadProjects();
-  loadInstitutional();
+  loadTemplates();
   loadPatterns();
 </script>
 </body>

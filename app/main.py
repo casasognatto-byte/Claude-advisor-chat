@@ -921,4 +921,10 @@ def presentations_page(request: Request):
     return FileResponse(os.path.join(STATIC_DIR, "apresentacoes.html"), headers=_NO_STORE)
 
 
+@app.get("/apresentacao/{token}")
+def public_presentation_page(token: str):
+    """Visualização animada pública (sem login) — ver app/presentations.py, rotas /share/{token}/*."""
+    return FileResponse(os.path.join(STATIC_DIR, "apresentacao-publica.html"), headers=_NO_STORE)
+
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

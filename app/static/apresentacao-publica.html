@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sogno · Apresentação</title>
+<style>
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-display:swap; }
+  :root { --gold: #c9975a; --cream: #f0ede6; --muted: #a3a09a; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #000; color: var(--cream); font-family: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .stage { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .stage img {
+    max-width: 92vw; max-height: 82vh; object-fit: contain; opacity: 0;
+    transition: opacity .6s ease;
+  }
+  .stage img.shown { opacity: 1; }
+  .caption { position: absolute; bottom: 60px; left: 0; right: 0; text-align: center; font-size: 15px; color: var(--cream); }
+  .counter { position: absolute; bottom: 34px; left: 0; right: 0; text-align: center; font-size: 12px; color: var(--muted); }
+  .nav-btn {
+    position: absolute; top: 0; bottom: 0; width: 18%; background: transparent; border: none; cursor: pointer;
+    color: rgba(240,237,230,.35); font-size: 34px; display: flex; align-items: center;
+  }
+  .nav-btn:hover { color: var(--gold); }
+  .nav-btn.prev { left: 0; justify-content: flex-start; padding-left: 18px; }
+  .nav-btn.next { right: 0; justify-content: flex-end; padding-right: 18px; }
+  .empty, .error { text-align: center; color: var(--muted); font-size: 14px; }
+  .brand { position: absolute; top: 22px; left: 26px; font-family: 'Benjamin', serif; font-size: 14px; color: var(--gold); letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="brand">Sogno</div>
+  <img id="slideImg" src="" alt="" />
+  <button class="nav-btn prev" id="prevBtn" aria-label="Anterior">‹</button>
+  <button class="nav-btn next" id="nextBtn" aria-label="Próximo">›</button>
+  <div class="caption" id="caption"></div>
+  <div class="counter" id="counter"></div>
+</div>
+
+<script>
+  const token = window.location.pathname.split("/").filter(Boolean).pop();
+  let slides = [];
+  let index = 0;
+
+  async function load() {
+    const stage = document.getElementById("stage");
+    try {
+      const res = await fetch(`/api/presentations/share/${token}/deck`);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        stage.innerHTML = `<div class="error">${d.detail || "Link inválido ou apresentação não encontrada."}</div>`;
+        return;
+      }
+      const deck = await res.json();
+      slides = deck.slides || [];
+      if (!slides.length) {
+        stage.innerHTML = `<div class="empty">Esta apresentação ainda não tem slides.</div>`;
+        return;
+      }
+      render();
+    } catch (e) {
+      stage.innerHTML = `<div class="error">Erro de conexão. Tente novamente.</div>`;
+    }
+  }
+
+  function render() {
+    const s = slides[index];
+    const img = document.getElementById("slideImg");
+    img.classList.remove("shown");
+    const next = new Image();
+    next.onload = () => { img.src = s.fileUrl; requestAnimationFrame(() => img.classList.add("shown")); };
+    next.src = s.fileUrl;
+    document.getElementById("caption").textContent = s.caption || "";
+    document.getElementById("counter").textContent = `${index + 1} / ${slides.length}`;
+  }
+
+  document.getElementById("prevBtn").addEventListener("click", () => {
+    index = (index - 1 + slides.length) % slides.length;
+    render();
+  });
+  document.getElementById("nextBtn").addEventListener("click", () => {
+    index = (index + 1) % slides.length;
+    render();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight") document.getElementById("nextBtn").click();
+    if (e.key === "ArrowLeft") document.getElementById("prevBtn").click();
+  });
+
+  load();
+</script>
+</body>
+</html>

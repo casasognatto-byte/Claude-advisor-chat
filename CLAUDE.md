@@ -656,5 +656,49 @@ simples e robusta, aprovada pelo Davi:
    própria. Testado de ponta a ponta com o modelo em branco: o Sogno pediu exatamente a
    distribuição certa, no tom da persona.
 
+## Descartado (08/07/2026): voz (STT/TTS)
+
+Davi decidiu não seguir com isso — item removido da lista de pendências. Se voltar a ser
+cogitado no futuro, tratar como pedido novo, não como retomada de algo já planejado.
+
+## Biblioteca de Apresentações: modelos (abertura/fechamento) + PDF + link animado (08/07/2026)
+
+Davi foi dormir e pediu pra eu continuar com o que não depende dele. Concluído nesta
+madrugada: "Slides Institucionais" (um conjunto único) virou **"Modelos de
+Apresentação"** (vários — ex: Simonetto, Stimmo, por equipe), cada um com slides marcados
+como abertura ou fechamento. Um projeto de cliente escolhe um modelo; o deck final fica
+sempre **abertura do modelo → renders do cliente → fechamento do modelo**. Duas formas de
+compartilhar: link público animado (token aleatório, sem login, mesmo padrão de segurança
+já usado no staging do Luma, revogável a qualquer momento) e **PDF** (documento estático,
+pra virar anexo de contrato — essa é a motivação real: apresentação pode virar parte do
+contrato, precisa de arquivo fechado, não link/HTML). PDF gerado com Pillow (nova
+dependência em `requirements.txt`), sem headless Chrome nem WeasyPrint.
+
+Testado localmente de ponta a ponta (backend via `httpx` direto e via navegador real):
+criar modelo, subir slide de abertura e de fechamento, criar projeto, atribuir modelo,
+montar deck (ordem abertura→ambientes→fechamento confirmada), baixar PDF (`%PDF-1.4`
+válido), gerar link público, acessar o deck e o arquivo da imagem **sem cookie de
+sessão** (token puro), revogar o link e confirmar 404 depois. Encontrado e corrigido um
+bug real de ordenação de rotas: `GET /templates` (1 segmento) ficava atrás de
+`GET /{project_id}` no arquivo, e o FastAPI/Starlette casa rotas por ordem de registro —
+qualquer request pra `/templates` caía no catch-all e devolvia 404 "Projeto não
+encontrado". Rotas de modelo foram movidas pra antes do catch-all. Dados de teste
+apagados do banco local ao final. Commit local feito, **sem push** — fica pra Davi
+revisar e decidir quando subir.
+
+Nota de ambiente (não é bug): a primeira chamada que usa Pillow em cada processo do
+servidor local demora ~10s (import) + ~10s por formato (PNG, PDF) na primeira vez —
+efeito do projeto estar dentro do OneDrive, não do código. Em produção (Render, fora do
+OneDrive) isso não deve acontecer.
+
+**Ainda pendente, precisa do Davi quando acordar**: revisar e decidir se quer dar push
+nesse commit; conferir se o deploy de antes (push `5d92256`) subiu certo no Render —
+visual novo + nome "Sogno" (se ainda aparecer "Neusa", existe uma variável
+`SYSTEM_PROMPT` manual no painel sobrescrevendo o padrão do código, precisa apagar lá) —
+e reimportar a planilha de cores em produção (importei só no banco de dev local; produção
+é outro Postgres, banco lá ainda está vazio). Falta também construir a UI de fato pra
+escolher slides de abertura/fechamento em produção (a interface já existe, só falta
+popular os modelos reais — Simonetto/Stimmo — com os slides institucionais de verdade).
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
