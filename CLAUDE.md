@@ -700,5 +700,92 @@ e reimportar a planilha de cores em produção (importei só no banco de dev loc
 escolher slides de abertura/fechamento em produção (a interface já existe, só falta
 popular os modelos reais — Simonetto/Stimmo — com os slides institucionais de verdade).
 
+## Sessão 08/07/2026 (manhã): push via SSH, upgrade de plano, achado sério de perda de imagens
+
+**Confirmado nesta sessão**: Davi já importou a planilha de cores em produção (74 cores,
+44 Simonetto + 30 Stimmo — testado ao vivo no chat: modal abre, ambas as abas certas,
+seleção múltipla funcionando, template de texto "no(s): ___" inserido certo).
+
+**GitHub bloqueado por rede (porta 443)**: às 08h de hoje, `git push` parou de
+funcionar — `Failed to connect to github.com port 443`, confirmado também no navegador
+(`ERR_CONNECTION_TIMED_OUT` em github.com/login). Pesquisa apontou bloqueio nacional
+reportado no Brasil em junho/2026 (suspeita de erro em ordem da Anatel). Porta 22 (SSH)
+respondeu normalmente. **Contorno aplicado, permanente**: gerei uma chave SSH
+(`~/.ssh/id_ed25519`), Davi cadastrou em github.com/settings/keys pelo 4G do celular, e
+troquei o remote do repo local pra SSH (`git remote set-url origin
+git@github.com:casasognatto-byte/Claude-advisor-chat.git`). Push por SSH funcionando
+normalmente desde então — usar sempre esse remote, não precisa mais mexer nisso.
+
+**Feature nova**: apagar conversas em lote no painel do diretor (checkbox por linha +
+"selecionar todas", endpoint `POST /api/admin/conversations/bulk-delete`) — commit
+`008c5d2`, testado e no ar.
+
+**Feature nova**: atalho ⚙ no topo do chat pro Painel do Diretor, além do link que já
+existia na sidebar — commit `7d52505`, testado e no ar.
+
+**Upgrade de plano Render, Free → Starter (US$7/mês)**: pedido do Davi pra eliminar a
+tela de "cold start" (~50s) que aparecia quando o serviço ficava 15min sem uso. Feito
+pelo dashboard, confirmado "Instance type changed from Free to Starter", deploy seguinte
+ficou live.
+
+**ACHADO SÉRIO, parcialmente corrigido — precisa verificação ao retomar**: logo depois do
+upgrade de plano, Davi reportou que os renders gerados no chat sumiram da tela (só
+apareciam os botões "Baixar imagem"/"Refazer", sem a imagem). Investigado a fundo:
+
+1. `app/image.py` salvava os arquivos (renders + imagem de origem) **só em disco local
+   efêmero do servidor** — diferente da Biblioteca de Apresentações, que já usa
+   `app/storage.py` (Cloudflare R2 com fallback local). Toda vez que o Render faz um
+   deploy/restart, o disco local é apagado — e isso inclui **qualquer** deploy (todo
+   `git push` já dispara um), não só trocas de plano. Ou seja, imagens geradas no chat
+   provavelmente já vinham sumindo há muito tempo, não só hoje.
+2. Achado relacionado: `SECRET_KEY` (assina o cookie de sessão) não era uma variável de
+   ambiente fixa — o código cai num valor aleatório gerado a cada boot
+   (`secrets.token_hex(32)`, ver `app/main.py`), então cada deploy também derrubava o
+   login de todo mundo. Foi isso que explicou a sessão cair sozinha no meio dos testes
+   desta manhã.
+
+**Correção aplicada e commitada** (`6fbb6fd`, já com push feito via SSH):
+- `app/image.py` migrado pra usar `app.storage` (mesmo padrão R2/local da Biblioteca de
+  Apresentações) em todos os pontos: criar job, "Refazer", download em lote, servir
+  arquivo. Nova coluna `image_mime` (a chave de storage não carrega mais extensão
+  previsível do jeito que o caminho de arquivo antigo carregava).
+- `render.yaml`: `SECRET_KEY` com `generateValue: true` (Render gera um valor uma vez e
+  mantém fixo entre deploys — resolve o logout forçado). `plan: starter` sincronizado no
+  arquivo (estava `free`) pra não reverter o upgrade manual num próximo sync do blueprint.
+- `/api/health` ganhou o campo `r2_enabled`, pra dar visibilidade sem precisar caçar no
+  painel do Render se R2 está configurado ou não.
+- Testado localmente de ponta a ponta (bytes idênticos entrada/saída em cada etapa).
+
+**PENDENTE — não confirmado ainda, retomar daqui**: o Render só aplica variáveis/plano
+declarados no `render.yaml` através de um "sync" do Blueprint (painel
+`dashboard.render.com/blueprint/exs-d90ou777f7vs73cr9870/syncs`), separado do
+auto-deploy de código que já roda a cada push. O último sync registrado ali era de
+**antes** de todos os commits de hoje (10h atrás no momento). Cliquei em "Manual sync"
+várias vezes tentando forçar a aplicação do `SECRET_KEY` novo, mas **nenhuma nova
+entrada apareceu na lista de syncs nem disparou uma requisição de rede visível** —
+parece que o clique não estava registrando de verdade (não confirmado se é bug da
+extensão do navegador, elemento sobreposto por algo, ou preciso de outro caminho, tipo
+mexer direto pela CLI/API do Render). Sessão foi interrompida aqui porque o Davi
+precisou sair.
+
+**Passos exatos pra retomar**:
+1. Confirmar se o Manual sync já rodou nesse meio tempo (checar
+   `dashboard.render.com/blueprint/exs-d90ou777f7vs73cr9870/syncs` — deve aparecer uma
+   entrada nova do commit `6fbb6fd`). Se não tiver rodado, tentar de novo (talvez direto
+   pelo navegador do Davi, não só via automação) ou considerar que o próximo deploy
+   normal (qualquer novo `git push`) pode aplicar as env vars do blueprint de qualquer
+   jeito — vale testar antes de insistir no sync manual.
+2. Checar `https://chat.casasognatto.com.br/api/health` → campo `r2_enabled`. Se
+   `true`: os renders do chat já devem persistir daqui pra frente. Se `false`: a
+   migração de código está certa mas R2 ainda não está configurado em produção — vai
+   continuar perdendo imagem a cada deploy até as variáveis `R2_ACCOUNT_ID` /
+   `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET` serem configuradas de
+   verdade no painel do Render (conta Cloudflare R2 grátis, se ainda não existir uma).
+3. Gerar um render de teste no chat de produção depois de confirmar o R2 (ou depois de
+   um deploy novo) e recarregar a página, pra confirmar visualmente que a imagem
+   continua aparecendo — esse é o teste real que prova que o bug foi corrigido.
+4. Confirmar que o login não cai mais sozinho depois de um deploy (sinal de que o
+   `SECRET_KEY` fixo pegou).
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
