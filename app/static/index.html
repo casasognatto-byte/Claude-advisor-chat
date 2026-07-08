@@ -237,6 +237,7 @@
           <span class="g">Advisor:</span> <b><span id="tok-adv-in">0</span></b> / <b><span id="tok-adv-out">0</span></b>
         </div>
         <button class="toggle" id="inspectorToggle" title="Inspetor de render">🎛</button>
+        <a class="toggle" id="adminLinkTop" href="/admin" title="Painel do diretor" style="display:none; text-decoration:none;">⚙</a>
       </div>
     </header>
     <main id="scroll"><div class="inner" id="chat"></div></main>
@@ -1271,6 +1272,7 @@
     document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
     if (role === "diretor") {
       document.getElementById("adminLink").style.display = "inline-block";
+      document.getElementById("adminLinkTop").style.display = "inline-block";
     }
     conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
     await loadOwnerFilter();
