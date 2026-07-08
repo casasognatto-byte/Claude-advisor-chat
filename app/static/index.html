@@ -153,6 +153,22 @@
   .restore-btn { flex: none; background: var(--accent); color: #1a1208; border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; }
   .restore-btn:hover { background: var(--accent-soft); }
 
+  /* ---------------- Modal de cores oficiais ---------------- */
+  .colors-body { flex-direction: row; }
+  .colors-main { flex: 1; min-width: 0; padding: 16px 20px; display: flex; flex-direction: column; min-height: 0; }
+  #colorsSearch { width: 100%; }
+  .colors-grid { flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; align-content: start; }
+  .color-item { display: flex; align-items: center; gap: 8px; background: var(--glass-bg-soft); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 9px 10px; cursor: pointer; font-size: 12.5px; }
+  .color-item:hover { border-color: var(--accent-border); }
+  .color-item.selected { background: var(--accent-dim); border-color: var(--accent-border); }
+  .color-item input[type=checkbox] { flex: none; accent-color: var(--accent); }
+  .color-item .name { flex: 1; min-width: 0; }
+  .color-item .manuf { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; }
+  .colors-side { width: 260px; flex: none; border-left: 1px solid var(--glass-border); padding: 16px 20px; display: flex; flex-direction: column; overflow-y: auto; }
+  .colors-selected { display: flex; flex-wrap: wrap; gap: 6px; }
+  .colors-selected .chip { font-size: 11.5px; padding: 5px 10px; }
+  .colors-selected .chip .x { margin-left: 4px; opacity: .7; }
+
   /* ---------------- Responsivo ---------------- */
   .sidebar-backdrop, .inspector-backdrop { display: none; }
   @media (max-width: 1180px) {
@@ -171,6 +187,10 @@
     header { padding: 12px 14px; }
     .tokens { display: none; } /* contador de tokens é telemetria interna, não essencial no espaço apertado do celular */
     .bubble, .user .bubble { max-width: 88%; }
+    .modal-card { width: 96vw; max-height: 92vh; }
+    .prompts-body, .colors-body { flex-direction: column; }
+    .prompts-list-col, .colors-side { width: auto; border-right: none; border-top: 1px solid var(--glass-border); }
+    .colors-grid { max-height: 40vh; }
   }
 </style>
 </head>
@@ -233,6 +253,7 @@
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
           <button class="icon-btn" id="imageBtn" title="Anexar planta/volumetria pra gerar render">🖼️</button>
+          <button class="icon-btn" id="colorsBtn" title="Cores oficiais Simonetto/Stimmo">🎨</button>
           <button class="icon-btn" id="promptsBtn" title="Biblioteca de prompts">📝</button>
           <button id="generateBtn" style="display:none;">Gerar</button>
           <button id="send">Enviar</button>
@@ -284,6 +305,31 @@
           <textarea id="promptContent" rows="10" placeholder="Escreva o prompt aqui…"></textarea>
           <div class="prompts-actions" id="promptsActions"></div>
           <div class="muted" id="promptsMsg" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="colorsOverlay" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Cores oficiais</div>
+        <button class="modal-close" id="colorsClose">✕</button>
+      </div>
+      <div class="prompts-body colors-body">
+        <div class="colors-main">
+          <div class="prompts-tabs">
+            <button class="prompts-tab active" id="tabSimonetto">Simonetto</button>
+            <button class="prompts-tab" id="tabStimmo">Stimmo</button>
+          </div>
+          <input id="colorsSearch" placeholder="Buscar cor…" style="margin-bottom:10px;" />
+          <div class="colors-grid" id="colorsGrid"></div>
+        </div>
+        <div class="colors-side">
+          <div class="insp-title">Selecionadas (<span id="colorsCount">0</span>)</div>
+          <div class="colors-selected" id="colorsSelected"></div>
+          <button class="btn btn-primary" id="colorsUseBtn" style="width:100%; margin-top:12px;">Usar cores selecionadas</button>
+          <div class="muted" id="colorsMsg" style="margin-top:8px; font-size:12px;"></div>
         </div>
       </div>
     </div>
@@ -1060,6 +1106,103 @@
   document.getElementById("tabPersonal").addEventListener("click", () => switchPromptsTab("personal"));
   document.getElementById("promptsNewBtn").addEventListener("click", clearPromptForm);
   document.getElementById("promptsTrashToggle").addEventListener("click", toggleTrash);
+
+  // ---------- Cores oficiais Simonetto/Stimmo (ícone no composer) ----------
+  let colorsCache = { simonetto: null, stimmo: null };
+  let colorsTab = "simonetto";
+  let colorsSelected = new Map(); // id -> {name, brandLabel}
+  const colorsOverlay = document.getElementById("colorsOverlay");
+  const colorsGridEl = document.getElementById("colorsGrid");
+  const colorsSearchEl = document.getElementById("colorsSearch");
+
+  async function openColors() {
+    colorsOverlay.style.display = "flex";
+    document.getElementById("colorsMsg").textContent = "";
+    await loadColorsTab();
+  }
+  function closeColors() { colorsOverlay.style.display = "none"; }
+
+  function switchColorsTab(brand) {
+    colorsTab = brand;
+    document.getElementById("tabSimonetto").classList.toggle("active", brand === "simonetto");
+    document.getElementById("tabStimmo").classList.toggle("active", brand === "stimmo");
+    colorsSearchEl.value = "";
+    loadColorsTab();
+  }
+
+  async function loadColorsTab() {
+    if (!colorsCache[colorsTab]) {
+      try {
+        colorsCache[colorsTab] = await fetch("/api/materials/colors?brand=" + colorsTab).then(r => r.ok ? r.json() : []);
+      } catch (_) { colorsCache[colorsTab] = []; }
+    }
+    renderColorsGrid();
+  }
+
+  function renderColorsGrid() {
+    const items = colorsCache[colorsTab] || [];
+    const q = colorsSearchEl.value.trim().toLowerCase();
+    const filtered = q ? items.filter(c => c.name.toLowerCase().includes(q)) : items;
+    colorsGridEl.innerHTML = "";
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "muted"; empty.style.fontSize = "12px"; empty.style.gridColumn = "1 / -1";
+      empty.textContent = items.length ? "Nenhuma cor bate com a busca." : "Nenhuma cor importada ainda pra essa marca — peça ao diretor pra importar a planilha no painel.";
+      colorsGridEl.appendChild(empty);
+      return;
+    }
+    for (const c of filtered) {
+      const div = document.createElement("div");
+      const checked = colorsSelected.has(c.id);
+      div.className = "color-item" + (checked ? " selected" : "");
+      div.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} />` +
+        `<span class="name">${escapeHtml(c.name)}${c.manufacturer ? `<span class="manuf">${escapeHtml(c.manufacturer)}</span>` : ""}</span>`;
+      div.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (colorsSelected.has(c.id)) colorsSelected.delete(c.id);
+        else colorsSelected.set(c.id, { name: c.name, brandLabel: c.brandLabel });
+        renderColorsGrid();
+        renderColorsSelected();
+      });
+      colorsGridEl.appendChild(div);
+    }
+  }
+
+  function renderColorsSelected() {
+    const wrap = document.getElementById("colorsSelected");
+    document.getElementById("colorsCount").textContent = colorsSelected.size;
+    wrap.innerHTML = "";
+    for (const [id, info] of colorsSelected) {
+      const chip = document.createElement("span");
+      chip.className = "chip active";
+      chip.innerHTML = `${escapeHtml(info.name)}<span class="x">✕</span>`;
+      chip.querySelector(".x").addEventListener("click", () => {
+        colorsSelected.delete(id);
+        renderColorsGrid();
+        renderColorsSelected();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+
+  colorsSearchEl.addEventListener("input", renderColorsGrid);
+
+  document.getElementById("colorsUseBtn").addEventListener("click", () => {
+    if (!colorsSelected.size) { document.getElementById("colorsMsg").textContent = "Selecione ao menos uma cor."; return; }
+    const names = Array.from(colorsSelected.values()).map(v => v.name);
+    const text = "Cores de referência: " + names.join(", ") + ".";
+    input.value = input.value ? input.value + "\n" + text : text;
+    autosize();
+    colorsSelected.clear();
+    renderColorsSelected();
+    closeColors();
+    input.focus();
+  });
+
+  document.getElementById("colorsBtn").addEventListener("click", openColors);
+  document.getElementById("colorsClose").addEventListener("click", closeColors);
+  document.getElementById("tabSimonetto").addEventListener("click", () => switchColorsTab("simonetto"));
+  document.getElementById("tabStimmo").addEventListener("click", () => switchColorsTab("stimmo"));
 
   function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }
   async function logout() { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; }

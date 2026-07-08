@@ -336,13 +336,16 @@ _init_activity_log_db()
 
 from app.admin import router as admin_router  # noqa: E402 (após _init_* por clareza)
 from app.image import init_image_db, router as image_router  # noqa: E402
+from app.materials import init_materials_db, router as materials_router  # noqa: E402
 from app.presentations import init_presentations_db, router as presentations_router  # noqa: E402
 from app.prompts import init_prompts_db, router as prompts_router  # noqa: E402
 app.include_router(admin_router)
 app.include_router(image_router)
+app.include_router(materials_router)
 app.include_router(prompts_router)
 app.include_router(presentations_router)
 init_image_db()
+init_materials_db()
 init_prompts_db()
 init_presentations_db()
 

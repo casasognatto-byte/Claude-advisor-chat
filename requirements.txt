@@ -10,3 +10,4 @@ tzdata>=2024.1  # zoneinfo precisa disso no Windows (sem banco de fuso do IANA n
 httpx>=0.27  # chamadas assíncronas ao fornecedor de imagem (Nano Banana) e ao ClickUp
 python-multipart>=0.0.9  # necessário pro FastAPI aceitar upload de imagem (UploadFile/Form)
 boto3>=1.34  # cliente S3 usado pra falar com Cloudflare R2 (Biblioteca de Apresentações)
+openpyxl>=3.1  # lê a planilha .xlsx de cores Simonetto/Stimmo (importação no painel admin)

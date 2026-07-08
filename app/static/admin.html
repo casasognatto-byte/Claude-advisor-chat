@@ -101,6 +101,19 @@
   </section>
 
   <section>
+    <h2>Cores oficiais (Simonetto / Stimmo)</h2>
+    <div class="muted" id="colorsStatus">Carregando…</div>
+    <div class="form-row">
+      <input type="file" id="colorsFile" accept=".xlsx" />
+      <button class="primary" id="colorsImportBtn">Importar planilha</button>
+    </div>
+    <div class="muted" id="colorsMsg" style="margin-top:10px;">
+      Envie o .xlsx com as colunas "SIMONETTO" e "STIMMO" (ou "ESTIMMO") — a importação
+      substitui o catálogo inteiro pelo conteúdo da planilha nova.
+    </div>
+  </section>
+
+  <section>
     <h2>Log de auditoria</h2>
     <div class="search-row">
       <input id="logSearch" placeholder="Buscar por nome do cliente/conversa…" />
@@ -208,9 +221,38 @@
   document.getElementById("logSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadLog(e.target.value.trim()); });
   document.getElementById("logout").addEventListener("click", async () => { try { await fetch("/api/logout", { method: "POST" }); } catch (_) {} window.location.href = "/login"; });
 
+  async function loadColorsStatus() {
+    const el = document.getElementById("colorsStatus");
+    try {
+      const s = await api("/api/materials/status");
+      if (!s.total) { el.textContent = "Nenhuma cor importada ainda."; return; }
+      const when = s.lastImportedAt ? new Date(s.lastImportedAt * 1000).toLocaleString("pt-BR") : "—";
+      el.textContent = `${s.total} cores (Simonetto: ${s.byBrand.simonetto || 0}, Stimmo: ${s.byBrand.stimmo || 0}) — última importação por ${s.lastImportedBy} em ${when}.`;
+    } catch (e) { el.textContent = "Erro ao carregar status: " + e.message; }
+  }
+
+  document.getElementById("colorsImportBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("colorsFile");
+    const msg = document.getElementById("colorsMsg");
+    if (!fileInput.files.length) { msg.textContent = "Escolha um arquivo .xlsx primeiro."; return; }
+    const form = new FormData();
+    form.append("file", fileInput.files[0]);
+    msg.textContent = "Importando…";
+    try {
+      const res = await fetch("/api/materials/import", { method: "POST", body: form });
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); msg.textContent = "Erro: " + (d.detail || res.statusText); return; }
+      const data = await res.json();
+      msg.textContent = `Importado: Simonetto ${data.counts.simonetto || 0}, Stimmo ${data.counts.stimmo || 0}.`;
+      fileInput.value = "";
+      loadColorsStatus();
+    } catch (e) { msg.textContent = "Erro de conexão: " + e.message; }
+  });
+
   loadUsers();
   loadConversations();
   loadLog();
+  loadColorsStatus();
 </script>
 </body>
 </html>

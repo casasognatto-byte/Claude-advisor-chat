@@ -582,5 +582,51 @@ uma regra), painel admin, Biblioteca de Apresentações, tela de login — tudo 
 nova, sem erro de console em nenhuma tela. Dados de teste limpos ao final (mesmo padrão
 de sempre).
 
+## Catálogo de cores Simonetto/Stimmo (08/07/2026, mesma madrugada)
+
+Davi mandou a planilha real de cores de MDP/MDF das duas marcas do Grupo Simonetto
+(`C:\Users\user\OneDrive\1. SOGNATTO AMBIENTES PLANEJADOS\CORES DAS LINHAS.xlsx`) e pediu
+um botão que diferencie Simonetto/Stimmo com seleção de várias cores ao mesmo tempo.
+
+**Estrutura real da planilha** (referência pra próximas importações): uma aba por ano
+(2023/2024/2025...), cabeçalho na linha 1 com o nome da marca ("SIMONETTO", "STIMMO" —
+numa aba aparece com erro de digitação "ESTIMMO") numa coluna, e abaixo dela pares (nome
+da cor, fabricante da placa: ARAUCO/DURATEX/EUCATEX/BERNECK/GUARARAPES/GREEN PLAC) até a
+lista acabar. Sempre pega a aba do ano mais recente.
+
+**Backend novo** (`app/materials.py`): tabela `material_colors` (brand, name,
+manufacturer). `POST /api/materials/import` (só diretor, multipart .xlsx) — localiza as
+colunas de marca pelo TEXTO do cabeçalho (não posição fixa, tolera pequenas mudanças de
+layout entre uma planilha e a próxima que o Davi mandar), substitui o catálogo inteiro
+(DELETE + INSERT). `GET /api/materials/colors?brand=` lista pra qualquer membro logado.
+Testado com a planilha real: 44 cores Simonetto + 30 Stimmo importadas corretamente,
+incluindo nomes acentuados ("CRÔMIO", "ÉBANO CHESS") — a planilha original já tinha UTF-8
+correto, um mojibake que vi no meu terminal bash era só limitação de exibição do
+terminal, não um problema real do dado.
+
+**Frontend**: novo ícone 🎨 no composer do chat principal, abre modal "Cores oficiais"
+com abas Simonetto/Stimmo, busca por nome, grade de cores com checkbox — **seleção
+persiste entre as duas abas** (dá pra marcar cores das duas marcas na mesma sessão antes
+de confirmar), painel lateral mostra as selecionadas com chip removível. "Usar cores
+selecionadas" insere `"Cores de referência: NOME1, NOME2, ..."` no campo de mensagem.
+
+**Painel admin**: nova seção "Cores oficiais" com status (quantas cores, quando/quem
+importou por último) + upload de nova planilha — pro Davi reimportar sozinho quando
+mandar uma atualização, sem precisar de mim.
+
+**Bug real encontrado e corrigido durante o teste**: a regra CSS `.colors-main input {
+width: 100%; }` (pensada só pro campo de busca) estava afetando TODOS os `<input>` dentro
+do modal por seletor descendente, inclusive os checkboxes da grade — cada checkbox virava
+uma barra esticada até a borda do card, espremendo o nome da cor pra largura zero
+(invisível). Só percebi porque o `preview_screenshot` deu timeout duas vezes e eu quase
+segui confiando só no snapshot/DOM (que confirma que o texto existe, mas não pega bug
+visual de layout) — insisti no screenshot depois de resolver o timeout e vi o problema.
+Corrigido trocando pro seletor `#colorsSearch` (só o campo de busca). Lição: quando
+`preview_screenshot` falha, não seguir só com verificação por texto/DOM — voltar e tirar
+o screenshot de verdade antes de dar como testado.
+
+Testado de ponta a ponta (import real via planilha, seleção multi-marca, inserção no
+composer, reimportação pelo admin) em desktop e mobile, sem erro de console.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
