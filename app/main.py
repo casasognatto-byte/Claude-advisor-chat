@@ -865,11 +865,16 @@ def chat(req: ChatRequest, request: Request):
 
 @app.get("/api/health")
 def health():
+    from app.storage import R2_ENABLED
+
     return {
         "ok": True,
         "api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "auth_enabled": AUTH_ENABLED,
         "db_enabled": DB_ENABLED,
+        # R2 ausente = arquivos (imagens, apresentações) caem pro disco local do
+        # servidor, que é apagado a cada deploy — ver app/storage.py.
+        "r2_enabled": R2_ENABLED,
     }
 
 

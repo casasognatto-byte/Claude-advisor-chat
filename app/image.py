@@ -12,10 +12,8 @@ import asyncio
 import json
 import os
 import secrets
-import tempfile
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/api/image")
 
@@ -47,16 +45,14 @@ def _build_prompt(architect_prompt: str) -> str:
 _EXT_BY_MIME = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 
 
-def _storage_root() -> str:
-    return os.environ.get("IMAGE_STORAGE_DIR") or os.path.join(tempfile.gettempdir(), "casasognatto_image")
-
-
-def _image_path(job_id: str, mime: str, kind: str = "out") -> str:
-    d = _storage_root()
-    os.makedirs(d, exist_ok=True)
+def _image_key(job_id: str, mime: str, kind: str = "out") -> str:
+    """Chave no storage (R2 com fallback local — ver app/storage.py). Antes disso
+    (até 08/07/2026) as imagens eram salvas só no disco local do servidor, que o
+    Render apaga a cada deploy — descoberto quando renders reais sumiram da tela
+    logo após um deploy de rotina."""
     ext = _EXT_BY_MIME.get(mime, "png")
     suffix = "" if kind == "out" else f"_{kind}"
-    return os.path.join(d, f"{job_id}{suffix}.{ext}")
+    return f"image/{job_id}{suffix}.{ext}"
 
 
 def init_image_db() -> None:
@@ -93,6 +89,10 @@ def init_image_db() -> None:
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_light TEXT;")
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_texture TEXT;")
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_camera TEXT;")
+            # Mime do resultado — precisa ficar salvo à parte porque, desde a
+            # migração pra app.storage (08/07/2026), image_path virou uma chave
+            # de storage (não mais um caminho de arquivo com extensão previsível).
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS image_mime TEXT;")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_jobs_user "
                 "ON image_jobs (username, created_at DESC);"
@@ -128,7 +128,8 @@ def _get_job(job_id: str) -> dict | None:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, username, conversation_id, status, error_message, image_path, "
-            "prompt, source_path, source_mime, engine, param_light, param_texture, param_camera "
+            "prompt, source_path, source_mime, engine, param_light, param_texture, param_camera, "
+            "image_mime "
             "FROM image_jobs WHERE id = %s",
             (job_id,),
         )
@@ -140,6 +141,7 @@ def _get_job(job_id: str) -> dict | None:
         "status": row[3], "error": row[4], "imagePath": row[5],
         "prompt": row[6], "sourcePath": row[7], "sourceMime": row[8], "engine": row[9],
         "paramLight": row[10], "paramTexture": row[11], "paramCamera": row[12],
+        "imageMime": row[13],
     }
 
 
@@ -191,6 +193,7 @@ async def _run_render_params(job_id: str, prompt: str) -> None:
 
 
 async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str) -> None:
+    from app import storage
     from app.image_engines import ENGINES, ImageGenerationError
 
     impl = ENGINES.get(engine)
@@ -200,10 +203,9 @@ async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str
         _update_job(job_id, status="processing")
         asyncio.create_task(_run_render_params(job_id, prompt))
         result_bytes, result_mime = await impl.generate(image_bytes, mime, _build_prompt(prompt))
-        path = _image_path(job_id, result_mime)
-        with open(path, "wb") as f:
-            f.write(result_bytes)
-        _update_job(job_id, status="done", image_path=path)
+        key = _image_key(job_id, result_mime)
+        storage.put(key, result_bytes, result_mime)
+        _update_job(job_id, status="done", image_path=key, image_mime=result_mime)
     except ImageGenerationError as e:
         print(f"[image job {job_id}] falha do fornecedor ({engine}): {e}")
         _update_job(job_id, status="error", error_message=GENERIC_ERROR)
@@ -219,6 +221,7 @@ async def create_job(
     prompt: str = Form(""),
     conversation_id: str | None = Form(None),
 ):
+    from app import storage
     from app.main import DB_ENABLED, _db, require_user
 
     user = require_user(request)
@@ -233,15 +236,14 @@ async def create_job(
     # Guarda a imagem original — sem isso não dá pra oferecer "Refazer" depois
     # (a chamada ao fornecedor consome o arquivo, não fica guardado em lugar
     # nenhum além daqui).
-    source_path = _image_path(job_id, mime, kind="src")
-    with open(source_path, "wb") as f:
-        f.write(image_bytes)
+    source_key = _image_key(job_id, mime, kind="src")
+    storage.put(source_key, image_bytes, mime)
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_path, mime),
+            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_key, mime),
         )
     asyncio.create_task(_run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE))
     return {"id": job_id, "status": "queued"}
@@ -252,6 +254,7 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
     """Gera de novo a partir da MESMA imagem de origem de um job anterior,
     opcionalmente com um prompt novo/ajustado. Vira um job novo e independente
     (não sobrescreve o resultado anterior — a arquiteta pode comparar os dois)."""
+    from app import storage
     from app.main import DB_ENABLED, _db, require_user
 
     user = require_user(request)  # conversas são compartilhadas — qualquer membro pode refazer
@@ -260,18 +263,16 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
     original = _get_job(job_id)
     if not original:
         raise HTTPException(404, "Job original não encontrado.")
-    if not original["sourcePath"] or not os.path.exists(original["sourcePath"]):
+    image_bytes = storage.get(original["sourcePath"]) if original["sourcePath"] else None
+    if image_bytes is None:
         raise HTTPException(400, "Imagem de origem não disponível pra refazer (job antigo demais).")
 
-    with open(original["sourcePath"], "rb") as f:
-        image_bytes = f.read()
     mime = original["sourceMime"] or "image/jpeg"
     final_prompt = prompt if prompt is not None else (original["prompt"] or "")
 
     new_job_id = "i" + secrets.token_hex(8)
-    new_source_path = _image_path(new_job_id, mime, kind="src")
-    with open(new_source_path, "wb") as f:
-        f.write(image_bytes)
+    new_source_key = _image_key(new_job_id, mime, kind="src")
+    storage.put(new_source_key, image_bytes, mime)
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -279,7 +280,7 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
             "VALUES (%s, %s, %s, %s, %s, %s, %s)",
             (
                 new_job_id, user["username"], original["conversationId"],
-                DEFAULT_ENGINE, final_prompt, new_source_path, mime,
+                DEFAULT_ENGINE, final_prompt, new_source_key, mime,
             ),
         )
     asyncio.create_task(_run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE))
@@ -316,6 +317,7 @@ def download_all_jobs(request: Request, conversation_id: str):
 
     from fastapi.responses import Response
 
+    from app import storage
     from app.main import DB_ENABLED, _db, require_user
 
     require_user(request)
@@ -333,12 +335,14 @@ def download_all_jobs(request: Request, conversation_id: str):
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, (path,) in enumerate(rows, start=1):
-            if not path or not os.path.exists(path):
+        for i, (key,) in enumerate(rows, start=1):
+            if not key:
                 continue
-            ext = path.rsplit(".", 1)[-1] if "." in path else "png"
-            with open(path, "rb") as f:
-                zf.writestr(f"render_{i:02d}.{ext}", f.read())
+            data = storage.get(key)
+            if data is None:
+                continue
+            ext = key.rsplit(".", 1)[-1] if "." in key else "png"
+            zf.writestr(f"render_{i:02d}.{ext}", data)
     buf.seek(0)
     return Response(
         content=buf.read(),
@@ -370,10 +374,16 @@ def get_job(job_id: str, request: Request):
 
 @router.get("/file/{job_id}")
 def get_file(job_id: str, request: Request):
+    from fastapi.responses import Response
+
+    from app import storage
     from app.main import require_user
 
     require_user(request)
     job = _get_job(job_id)
-    if not job or job["status"] != "done" or not job["imagePath"] or not os.path.exists(job["imagePath"]):
+    if not job or job["status"] != "done" or not job["imagePath"]:
         raise HTTPException(404, "Imagem não disponível.")
-    return FileResponse(job["imagePath"])
+    data = storage.get(job["imagePath"])
+    if data is None:
+        raise HTTPException(404, "Imagem não disponível.")
+    return Response(content=data, media_type=job["imageMime"] or "image/png")

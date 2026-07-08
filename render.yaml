@@ -2,7 +2,9 @@ services:
   - type: web
     name: advisor-chat
     runtime: python
-    plan: free
+    plan: starter   # 08/07/2026: upgrade do free — eliminar o "cold start" (~50s) que
+    # aparecia pra quem acessasse depois de 15min sem uso. Manter sincronizado aqui
+    # pra evitar que o blueprint reverta pra "free" sozinho num próximo sync/deploy.
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -10,6 +12,11 @@ services:
         value: "1"   # sem isso, os print() de diagnostico (erros de email/clickup/etc.) ficam
         # presos no buffer do Python e nunca aparecem nos logs do Render - achado real
         # investigando por que o "esqueci senha" travava sem erro visivel (2026-07-06)
+      - key: SECRET_KEY
+        generateValue: true   # 08/07/2026: sem isso, o código caía num valor aleatório
+        # gerado a cada boot (ver app/main.py) — cada deploy derrubava a sessão de
+        # login de todo mundo. generateValue: true faz o Render gerar um valor uma
+        # única vez e mantê-lo fixo entre deploys.
       - key: ANTHROPIC_API_KEY
         sync: false   # defina no painel do Render (Secret)
       - key: SYSTEM_PROMPT
