@@ -94,10 +94,14 @@
   <section>
     <h2>Todas as conversas</h2>
     <table id="convTable">
-      <thead><tr><th>Título</th><th>Criada por</th><th>Atualizada</th></tr></thead>
+      <thead><tr><th><input type="checkbox" id="convSelectAll" /></th><th>Título</th><th>Criada por</th><th>Atualizada</th></tr></thead>
       <tbody id="convBody"></tbody>
     </table>
     <div class="empty" id="convEmpty" style="display:none;">Nenhuma conversa ainda.</div>
+    <div class="form-row" style="margin-top:10px;">
+      <span class="muted" id="convSelectedCount">Nenhuma selecionada.</span>
+      <button class="danger" id="convBulkDeleteBtn" disabled>Apagar selecionadas</button>
+    </div>
   </section>
 
   <section>
@@ -192,18 +196,53 @@
     } catch (e) { msg.textContent = "Erro: " + e.message; }
   });
 
+const convSelected = new Set();
+
+  function updateConvBulkUI() {
+    const count = convSelected.size;
+    document.getElementById("convSelectedCount").textContent =
+      count ? `${count} selecionada${count > 1 ? "s" : ""}.` : "Nenhuma selecionada.";
+    document.getElementById("convBulkDeleteBtn").disabled = count === 0;
+    const all = document.querySelectorAll("#convBody .conv-check");
+    document.getElementById("convSelectAll").checked = all.length > 0 && count === all.length;
+  }
+
   async function loadConversations() {
     const convs = await api("/api/admin/conversations");
     const body = document.getElementById("convBody");
     body.innerHTML = "";
+    convSelected.clear();
     document.getElementById("convEmpty").style.display = convs.length ? "none" : "block";
     for (const c of convs) {
       const tr = document.createElement("tr");
       const date = new Date(c.updatedAt * 1000).toLocaleString("pt-BR");
-      tr.innerHTML = `<td>${c.title}</td><td>${c.owner}</td><td>${date}</td>`;
+      tr.innerHTML = `<td><input type="checkbox" class="conv-check" data-id="${c.id}" /></td><td>${c.title}</td><td>${c.owner}</td><td>${date}</td>`;
+      tr.querySelector(".conv-check").addEventListener("change", (e) => {
+        if (e.target.checked) convSelected.add(c.id); else convSelected.delete(c.id);
+        updateConvBulkUI();
+      });
       body.appendChild(tr);
     }
+    updateConvBulkUI();
   }
+
+  document.getElementById("convSelectAll").addEventListener("change", (e) => {
+    document.querySelectorAll("#convBody .conv-check").forEach((cb) => {
+      cb.checked = e.target.checked;
+      if (e.target.checked) convSelected.add(cb.dataset.id); else convSelected.delete(cb.dataset.id);
+    });
+    updateConvBulkUI();
+  });
+
+  document.getElementById("convBulkDeleteBtn").addEventListener("click", async () => {
+    const ids = Array.from(convSelected);
+    if (!ids.length) return;
+    if (!confirm(`Apagar ${ids.length} conversa${ids.length > 1 ? "s" : ""}? Não tem como desfazer.`)) return;
+    await api("/api/admin/conversations/bulk-delete", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }),
+    });
+    loadConversations();
+  });
 
   async function loadLog(q) {
     const rows = await api("/api/admin/activity-log" + (q ? "?q=" + encodeURIComponent(q) : ""));

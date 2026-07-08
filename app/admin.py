@@ -141,6 +141,27 @@ def all_conversations(request: Request):
     ]
 
 
+class ConversationBulkDelete(BaseModel):
+    ids: list[str]
+
+
+@router.post("/conversations/bulk-delete")
+def bulk_delete_conversations(body: ConversationBulkDelete, request: Request):
+    from app.main import _db, _log_activity, _require_db, require_admin
+
+    admin = require_admin(request)
+    _require_db()
+    if not body.ids:
+        return {"deleted": 0}
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, title FROM conversations WHERE id = ANY(%s)", (body.ids,))
+        rows = cur.fetchall()
+        cur.execute("DELETE FROM conversations WHERE id = ANY(%s)", (body.ids,))
+    for _cid, title in rows:
+        _log_activity(admin["username"], "conversa_deletada", title)
+    return {"deleted": len(rows)}
+
+
 @router.get("/activity-log")
 def activity_log(request: Request, q: str | None = None):
     from app.main import _db, _require_db, require_admin
