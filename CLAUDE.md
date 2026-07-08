@@ -307,5 +307,117 @@ POST pra quem ficou), geração de vídeo mostrando o texto certo do botão.
 **Nota de ambiente recorrente**: `.venv` quebrado de novo ao retomar nesta máquina (mesmo
 sintoma documentado no topo deste arquivo) — recriado sem problema.
 
+## Estado em 08/07/2026 — Vídeo-tour (N imagens → 1 vídeo com transições + trilha)
+
+Pedido do Davi após testar a geração de vídeo isolada: um projeto com várias imagens
+(ex: 5 ângulos da mesma cozinha) devia virar **1 vídeo só**, não um clipe por imagem.
+Como nenhuma ferramenta de vídeo por IA (Luma, Veo, Runway, Kling) aceita mais de 2
+imagens numa chamada — confirmado tanto na pesquisa quanto no teste real —, a solução
+foi: **N imagens → N-1 clipes de transição real** (par a par, usando `start_frame` +
+`end_frame` do Luma) **→ concatenados em 1 vídeo → trilha de fundo instrumental por
+cima**. Testado de ponta a ponta com 5 imagens reais (4 transições, ~20s final,
+qualidade validada visualmente frame a frame) via túnel HTTPS temporário (cloudflared,
+já que o Luma exige HTTPS pra buscar a imagem staged e localhost não serve).
+
+**Arquivos novos/alterados**:
+- `app/video_assembly.py` (novo) — concatenação e mixagem de áudio via `ffmpeg`
+  (binário portátil do pacote `imageio-ffmpeg`, sem depender de apt/root — funciona
+  igual no Render).
+- `app/assets/vivaldi_inverno.mp3` + `NOTICE.md` — trilha padrão (Vivaldi, "Inverno",
+  1º mov.), gravação de domínio público via Internet Archive (CC BY-SA 3.0, uso
+  comercial permitido com atribuição — ver `NOTICE.md`).
+- `app/video_engines.py` — `LumaEngine.start()` agora aceita `end_image_bytes`/`end_mime`
+  opcionais (gera `video.end_frame` na chamada); retry automático com backoff em 429
+  "Concurrent generation limit reached" (a conta tem um teto de gerações simultâneas —
+  antes disso, um vídeo-tour com vários clipes ao mesmo tempo falhava direto).
+  `StubEngine`/`VeoEngine` aceitam os mesmos parâmetros mas ignoram (só o Luma faz
+  transição real entre 2 quadros hoje).
+- `app/video.py` — nova tabela `video_tours` (id, project_id, job_ids[], status,
+  video_path); `create_video_tour()` gera os N-1 jobs de transição e um job de tour que
+  espera todos, concatena e mixa a trilha; rotas `GET /api/video/tours/{id}` e
+  `GET /api/video/tours/{id}/file`. `video_jobs` ganhou `stage_token2`/`stage_mime2`
+  (um job de transição tem 2 imagens staged ao mesmo tempo — `_stage_image` agora recebe
+  `slot=1|2`, `_cleanup_stage` limpa os dois).
+- `app/presentations.py` — `POST /{project_id}/video-tour` (body opcional
+  `{imageIds: [...]}`; sem isso, usa todas as imagens do projeto na ordem de envio).
+- `app/static/apresentacoes.html` — botão "🎬 Criar vídeo tour" na tela do projeto +
+  checkbox "Incluir no tour" em cada imagem (nenhuma marcada = usa todas).
+
+**Achado técnico registrado**: a busca no histórico completo da conversa (antes deste
+pedido) não encontrou nenhuma decisão prévia sobre como o vídeo deveria ser produzido —
+a menção a "múltiplas imagens de uma vez" de uma sessão anterior era sobre o upload em
+lote na UI, não sobre a geração de vídeo em si. Vale não presumir que uma decisão foi
+tomada antes sem confirmar com o Davi.
+
+**Duração por transição**: Luma só aceita `"5s"` ou `"10s"` (testado direto contra a API
+real mandando um valor inválido de propósito pra ela revelar o enum aceito — não dá pra
+pedir um número arbitrário de segundos). A pedido do Davi, **não tem seletor na UI** —
+fica fixo em `"5s"` internamente (`TOUR_ALLOWED_DURATIONS`/`ALLOWED_DURATIONS` em
+`app/video.py` e `app/video_engines.py`, parâmetro `duration` já encanado em toda a
+cadeia se um dia precisar expor). Vídeo final dura (N-1) × 5s.
+
+## 🔴 PROBLEMA REAL ENCONTRADO — precisa resolver antes de liberar (08/07/2026)
+
+Depois de rodar o teste de ponta a ponta com as 5 imagens reais da cozinha (vídeo salvo
+em `Downloads/video-tour-teste-cozinha.mp4` na máquina do Davi), o feedback dele foi:
+
+> "o vídeo está errado. Criou outros ambientes. Mudou a cor e textura de alguns
+> materiais."
+
+Ou seja: o Luma, ao gerar a transição entre 2 imagens (`start_frame`/`end_frame`), **não
+está sendo fiel ao projeto real** — inventa ambientes que não existem nas imagens de
+referência e altera cor/textura de material (o mesmo tipo de problema que o Davi já tinha
+avisado ser inegociável desde o início do projeto: "não alterar nada no projeto, layout,
+de interiores"). Isso é mais grave do que o efeito de "sobreposição/fantasma" registrado
+acima (que era só um artefato visual passageiro) — aqui o conteúdo em si fica infiel.
+
+**Hipóteses a investigar na próxima sessão** (nenhuma testada ainda):
+1. O prompt de transição (`TRANSITION_PROMPT` em `app/video.py`) pode não ser forte o
+   suficiente pra restringir o Luma — talvez precise ser bem mais explícito/repetitivo
+   sobre "não inventar nada, não mudar material nenhum, só mover a câmera".
+2. Pode ser uma limitação real do modelo `ray-3.2` em manter fidelidade entre 2 imagens
+   muito diferentes de ângulo — nesse caso, talvez a abordagem de transição encadeada
+   (que o Davi pediu) não seja viável com qualidade aceitável, e valha reconsiderar as
+   outras opções já levantadas (1 clipe por imagem isolado, ou 1 clipe início+fim só).
+3. Vale testar com pares de imagens mais próximas entre si (ângulos parecidos) pra ver se
+   o problema é proporcional à diferença entre as duas imagens do par.
+4. Conferir se existe algum parâmetro do Luma pra aumentar a aderência às imagens de
+   referência (ex: "guidance" mais alto, ou usar `end_frame` de um jeito diferente).
+
+**Estado do código**: a funcionalidade toda (transições encadeadas + montagem + trilha)
+está implementada e tecnicamente funcionando (sem erros, roda ponta a ponta) — o problema
+é de **qualidade/fidelidade do resultado gerado pelo Luma**, não um bug de encanamento.
+
+## Decisão (08/07/2026): geração de vídeo REMOVIDA da Neusa
+
+Depois do problema acima, Davi decidiu: **abandonar o Luma e a geração de vídeo por
+completo** — "não agrega o suficiente". Foco do produto passa a ser só **renders de
+imagem + apresentações**. Ação tomada:
+
+1. As mudanças de vídeo-tour (ainda não commitadas) foram revertidas via `git checkout`
+   (nunca chegaram a entrar no histórico).
+2. A funcionalidade de vídeo que já estava em produção foi removida por completo:
+   `app/video.py` e `app/video_engines.py` apagados; router/init de vídeo tirados de
+   `app/main.py`; endpoint `POST /{project_id}/images/{image_id}/video` tirado de
+   `app/presentations.py`; ícone 🎬 + fluxo de staging de vídeo tirados de
+   `app/static/index.html` (chat principal); botão "🎬 Gerar vídeo" tirado de
+   `app/static/apresentacoes.html`; variáveis `VIDEO_ENGINE`/`LUMA_API_KEY` tiradas de
+   `render.yaml`/`.env.example` (mantido `GOOGLE_API_KEY`/`PUBLIC_BASE_URL`, que também
+   servem pra imagem e pra links de convite/senha, respectivamente).
+3. A classe CSS compartilhada `.video-card` (usada tanto por vídeo quanto por imagem)
+   virou `.render-card` — nome que já refletia melhor o que sobrou.
+4. **Prompt-base de fidelidade** (pedido explícito do Davi): todo render agora recebe uma
+   instrução fixa, **antes** de qualquer texto que a arquiteta escreva — não alterar
+   layout, móveis, proporções, cor/textura de móveis/pedras/paredes do projeto original,
+   e não inventar ambientes/objetos, exceto quando a própria instrução da arquiteta pedir
+   uma mudança específica e pontual. Implementado em `app/image.py`
+   (`FIDELITY_BASE_PROMPT` + `_build_prompt()`), aplicado no único ponto onde todo job de
+   imagem passa antes de chamar o fornecedor (`_run_image_job`) — cobre tanto criação
+   nova (`POST /jobs`) quanto "Refazer" (`POST /jobs/{id}/redo`). O prompt bruto da
+   arquiteta continua salvo sem alteração no banco (pro campo de edição do "Refazer"
+   continuar mostrando só o texto dela, não a instrução de base).
+5. Não commitado ainda no momento em que este parágrafo foi escrito — ver estado do
+   `git status` na sessão seguinte.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.

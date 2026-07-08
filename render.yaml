@@ -30,14 +30,10 @@ services:
         value: naoresponda@casasognatto.com.br
       - key: SMTP_PASSWORD
         sync: false   # SEGREDO — senha da caixa naoresponda@; defina no painel do Render, nunca versionar
-      - key: VIDEO_ENGINE
-        value: stub   # trocar para "luma" ou "veo" quando as chaves abaixo estiverem configuradas
-      - key: LUMA_API_KEY
-        sync: false
       - key: GOOGLE_API_KEY
-        sync: false
+        sync: false   # Nano Banana (geração de imagem), via Gemini API
       - key: PUBLIC_BASE_URL
-        value: https://chat.casasognatto.com.br
+        value: https://chat.casasognatto.com.br   # usado nos links de convite/redefinição de senha
       - key: IMAGE_ENGINE
         value: stub   # trocar para "nanobanana" quando GOOGLE_API_KEY estiver configurada
       - key: R2_ACCOUNT_ID

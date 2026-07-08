@@ -21,6 +21,28 @@ router = APIRouter(prefix="/api/image")
 GENERIC_ERROR = "Falha ao gerar a imagem, tente novamente."
 DEFAULT_ENGINE = os.environ.get("IMAGE_ENGINE", "stub")
 
+# Anexado a TODO prompt de render, não importa o que a arquiteta escreva —
+# regra inegociável do Davi (08/07/2026): a IA nunca pode alterar o projeto
+# de interiores por conta própria. Só muda o que for pedido explícita e
+# pontualmente nas instruções abaixo dessa base.
+FIDELITY_BASE_PROMPT = (
+    "Transforme esta imagem em um render fotorrealista. Regra inegociável: não "
+    "altere o projeto de interiores em nada além do que for pedido explicitamente "
+    "nas instruções abaixo — preserve exatamente o mesmo layout, os mesmos móveis, "
+    "as mesmas proporções e posições, e a mesma cor e textura de móveis, pedras e "
+    "paredes do projeto original. Não invente cômodos, ambientes, portas, janelas, "
+    "móveis ou objetos que não estejam na imagem de referência. Só mude cor, "
+    "textura, material, iluminação ou decoração de algo específico se uma "
+    "instrução abaixo pedir isso pontualmente."
+)
+
+
+def _build_prompt(architect_prompt: str) -> str:
+    architect_prompt = (architect_prompt or "").strip()
+    if not architect_prompt:
+        return FIDELITY_BASE_PROMPT
+    return f"{FIDELITY_BASE_PROMPT}\n\nInstruções específicas da arquiteta:\n{architect_prompt}"
+
 _EXT_BY_MIME = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 
 
@@ -121,7 +143,7 @@ async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str
         if impl is None:
             raise ImageGenerationError(f"Engine desconhecido: {engine}")
         _update_job(job_id, status="processing")
-        result_bytes, result_mime = await impl.generate(image_bytes, mime, prompt)
+        result_bytes, result_mime = await impl.generate(image_bytes, mime, _build_prompt(prompt))
         path = _image_path(job_id, result_mime)
         with open(path, "wb") as f:
             f.write(result_bytes)

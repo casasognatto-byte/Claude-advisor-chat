@@ -545,54 +545,11 @@ def delete_image(project_id: str, image_id: str, request: Request):
     return {"ok": True}
 
 
-def _style_to_prompt(style: dict) -> str:
-    """Monta um prompt a partir das respostas da entrevista de estilo — usado
-    como padrão ao gerar vídeo quando a arquiteta não escreve um prompt à
-    mão. Evita começar do zero toda vez que os detalhes já foram capturados."""
-    parts = []
-    if style.get("mdfColor"):
-        parts.append(f"Cor real do MDF/MDP: {style['mdfColor']}.")
-    tom_label = {"quente": "quente (3000K)", "neutra": "neutra (4000K)", "fria": "fria (6000K)"}.get(
-        style.get("ilumGeralTom"), ""
-    )
-    if tom_label:
-        parts.append(f"Iluminação geral com temperatura {tom_label}.")
-    if style.get("ilumGeralDetalhe"):
-        parts.append(style["ilumGeralDetalhe"].rstrip(".") + ".")
-    if style.get("ilumMoveis"):
-        parts.append(f"Iluminação nos móveis: {style['ilumMoveis'].rstrip('.')}.")
-    if style.get("decoracao"):
-        parts.append("Decoração presente: " + ", ".join(style["decoracao"]) + ".")
-    return " ".join(parts)
-
-
-class VideoFromImageRequest(BaseModel):
-    prompt: str | None = None
-
-
-@router.post("/{project_id}/images/{image_id}/video")
-async def create_video_from_image(project_id: str, image_id: str, body: VideoFromImageRequest, request: Request):
-    """Gera vídeo (Luma/Veo) direto de uma imagem já armazenada aqui — sem
-    precisar baixar e reenviar pelo chat principal."""
-    from app import storage
-    from app.main import _db, _require_db, require_user
-    from app.video import create_video_job
-
-    user = require_user(request)
-    _require_db()
-    with _db() as conn, conn.cursor() as cur:
-        cur.execute(
-            "SELECT storage_key, mime, style FROM project_images WHERE id = %s AND project_id = %s",
-            (image_id, project_id),
-        )
-        row = cur.fetchone()
-    if not row:
-        raise HTTPException(404, "Imagem não encontrada.")
-    image_bytes = storage.get(row[0])
-    if image_bytes is None:
-        raise HTTPException(404, "Arquivo não disponível.")
-    prompt = body.prompt if body.prompt is not None else _style_to_prompt(row[2] or {})
-    return create_video_job(user, image_bytes, row[1], prompt, conversation_id=None, variant=None)
+# A geração de vídeo foi removida da Neusa em 08/07/2026 (decisão do Davi:
+# o fornecedor de vídeo não mantinha fidelidade ao projeto — inventava
+# ambientes e mudava materiais; foco do produto passou a ser renders de
+# imagem + apresentações). O endpoint de vídeo por imagem que vivia aqui e
+# o módulo app/video.py inteiro saíram — ver histórico do git se precisar.
 
 
 # --- Biblioteca de padrões técnicos (iluminação/decoração por tipo de móvel) -
