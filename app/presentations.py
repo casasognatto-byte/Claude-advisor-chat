@@ -329,7 +329,13 @@ def delete_project(project_id: str, request: Request):
 # Rotas com 2+ segmentos (ver nota em init_presentations_db/módulo) pra não
 # colidir com o catch-all GET /{project_id}.
 @router.get("/references/search")
-def search_references(request: Request, room_type: str | None = None, client: str | None = None):
+def search_references(
+    request: Request, room_type: str | None = None, client: str | None = None,
+    exclude_project_id: str | None = None,
+):
+    """"Referências de projetos anteriores" — por definição, não deve incluir
+    o próprio projeto que a arquiteta está editando no momento (senão as
+    imagens que ela acabou de subir aparecem como "referência" de si mesmas)."""
     from app.main import _db, _require_db, require_user
 
     require_user(request)
@@ -342,6 +348,9 @@ def search_references(request: Request, room_type: str | None = None, client: st
     if client:
         conditions.append("p.client_name ILIKE %s")
         params.append(f"%{client}%")
+    if exclude_project_id:
+        conditions.append("i.project_id != %s")
+        params.append(exclude_project_id)
     where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     with _db() as conn, conn.cursor() as cur:
         cur.execute(

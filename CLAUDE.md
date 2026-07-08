@@ -419,5 +419,86 @@ imagem + apresentações**. Ação tomada:
 5. Não commitado ainda no momento em que este parágrafo foi escrito — ver estado do
    `git status` na sessão seguinte.
 
+## Auditoria noturna (08/07/2026): Neusa testada como arquiteta de verdade
+
+Enquanto o Davi dormia, pediu pra eu "virar um agente" e auditar a Neusa usando-a de
+verdade — como uma arquiteta parceira usaria, não só lendo código. Rodei o servidor local
+(perfil `advisor-chat-local`, porta 8001, banco `advisor_chat_dev` local) e usei o usuário
+de teste "Nova Arquiteta" (papel `membro`) pra logar e navegar pela aplicação de verdade
+via browser automatizado, com chamadas reais à Anthropic (chat + classificação de
+ambiente) e engine de imagem em modo `stub` (sem `GOOGLE_API_KEY` real disponível esta
+noite).
+
+### Corrigidos nesta sessão (já commitados)
+
+1. **Prompt não limpava após "Gerar"** (`app/static/index.html`) — depois de anexar
+   imagem + escrever instruções + clicar "Gerar", o texto continuava no campo de
+   mensagem. Se a arquiteta apertasse Enter/ENVIAR em seguida, esse texto virava uma
+   mensagem de chat comum pra Neusa (duplicado, sem sentido, gastando uma chamada à
+   Claude à toa). Corrigido: `input.value` é limpo assim que o prompt é lido.
+2. **Placeholder "Comece uma nova conversa" ficava sobreposto ao resultado** — na
+   primeira geração de uma conversa nova, o aviso de "conversa vazia" continuava visível
+   ao lado do card de render, porque `startImageJob` inseria o resultado direto no DOM
+   sem limpar o placeholder. Corrigido.
+3. **"Ver referências" mostrava o próprio projeto como referência de si mesmo**
+   (`app/presentations.py` + `apresentacoes.html`) — a busca de "referências de projetos
+   anteriores" não excluía o projeto atual, então uma imagem recém-enviada aparecia como
+   "referência" pra ela mesma. Adicionado `exclude_project_id` na busca.
+4. **Mobile: aba "Padrões técnicos" ficava cortada e inacessível** na Biblioteca de
+   Apresentações — `nav.tabs` não tinha `flex-wrap`, então em telas estreitas a terceira
+   aba saía da tela sem nenhuma forma de rolar até ela. Corrigido com `flex-wrap: wrap`.
+
+### Reportados, NÃO corrigidos (decisão ou investimento maior — ver com o Davi)
+
+5. **Chat principal sem breakpoint mobile de verdade** — `app/static/index.html` não tem
+   nenhuma `@media query`; a barra lateral é sempre 270px fixos. Numa tela de celular
+   comum (~375-414px), isso deixa pouquíssimo espaço pro chat em si, e só dá pra ver o
+   conteúdo tocando manualmente no ☰ pra recolher a barra (funciona, mas não é o padrão
+   — a maioria dos apps de chat já abre recolhido/adaptado em tela pequena). Não mexi
+   nisso por ser uma mudança de layout maior, não um bug pontual — melhor o Davi decidir
+   se quer investir nisso ou se o uso real é sempre em desktop/tablet.
+6. **Estado de navegação se perde ao recarregar a página** — se a arquiteta der F5 (ou o
+   navegador restaurar a aba) dentro de um projeto da Biblioteca de Apresentações, ela
+   volta pra lista de projetos (perde o "onde eu estava"). Não é perda de dado (tudo
+   persiste no servidor, confirmado), só obriga clicar de novo no projeto. Não é único —
+   o chat principal tem o mesmo padrão (sempre volta pra última conversa ativa salva
+   localmente, então esse é menos crítico).
+7. ~~Logo da tela de login retorna 404~~ — **falso alarme, verificado e descartado.** Vi
+   `GET /static/logo.png → 404` no console e anotei como achado, mas ao checar o código
+   (`login.html`) vi que é proposital: a tag `<img>` começa com `display:none` e só
+   aparece via `onload` — se o arquivo não existir, o 404 é inofensivo e o fallback em
+   texto (que já é o que aparece hoje) continua visível. Nenhuma ação necessária.
+8. **Prompt-base de fidelidade (item 4 da seção anterior) não testado contra um
+   fornecedor real esta noite** — confirmei por teste unitário direto e revisão de código
+   que `_build_prompt()` está corretamente encanado como o único ponto de entrada antes
+   de qualquer engine de imagem, mas como só há `IMAGE_ENGINE=stub` disponível aqui (sem
+   `GOOGLE_API_KEY` real), não dá pra confirmar visualmente que o Nano Banana realmente
+   respeita a instrução. Recomendo o Davi testar uma vez com uma chave real antes de
+   confiar 100% nisso.
+
+### Pontos fortes confirmados (sem achados)
+
+- Persona da Neusa: saudação por nome/horário funcionando bem, tom consistente
+  ("Boa noite, Nova Arquiteta!..."), resposta rápida (poucos segundos).
+- Classificação automática de ambiente: 100% de acerto nos testes (2/2 imagens de
+  cozinha real classificadas corretamente via visão computacional).
+- Persistência de estilo (cor MDF, tom de luz, decoração): salva e recarrega
+  corretamente.
+- Biblioteca de padrões técnicos → sugestão automática no campo de iluminação: funciona
+  ponta a ponta.
+- Download em lote (.zip): testado, zip válido, todas as imagens presentes.
+- Fluxo de "Refazer": mostra o prompt original (sem a instrução de fidelidade, como
+  projetado) pra edição.
+- Nenhum erro de JavaScript no console em nenhuma das telas testadas.
+- Confirmado visualmente: nenhum ícone/botão/menção a vídeo restou em nenhuma tela.
+
+### Ambiente de teste (limpo ao final)
+
+Projeto de teste "Auditoria Neusa - Cozinha Teste", padrão técnico de teste e 2
+conversas "Nova conversa" criadas durante a auditoria foram apagados ao final. Usuário
+de teste "Nova Arquiteta" (não faz parte do roster oficial, já existia de sessão
+anterior) devolvido ao estado `active=false` em que foi encontrado. Servidor local
+parado. Nada disso toca produção — tudo rodou contra o banco `advisor_chat_dev` local.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.

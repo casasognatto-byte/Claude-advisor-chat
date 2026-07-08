@@ -576,9 +576,11 @@
     let c = active(); if (!c) { newConv(); c = active(); }
     await ensureData(c);
     const prompt = input.value.trim();
+    input.value = ""; autosize();
 
     const item = { type: "image", jobId: null, status: "queued" };
     c.data.view.push(item);
+    if (c.data.view.length === 1) chat.innerHTML = ""; // tira o placeholder "Comece uma nova conversa"
     const r = document.createElement("div"); r.className = "msg assistant";
     const card = document.createElement("div"); card.className = "render-card";
     renderImageCardBody(card, item);
