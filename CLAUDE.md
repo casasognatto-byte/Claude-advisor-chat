@@ -628,5 +628,33 @@ o screenshot de verdade antes de dar como testado.
 Testado de ponta a ponta (import real via planilha, seleção multi-marca, inserção no
 composer, reimportação pelo admin) em desktop e mobile, sem erro de console.
 
+**Confirmado pelo Davi**: catálogo fechado (só as cores importadas da planilha oficial,
+sem campo de texto livre) é o design certo — "a indústria não trabalha com cores não
+oficiais", ou seja, móveis planejados só são fabricados nas cores que constam no
+catálogo oficial de cada marca. Não adicionar no futuro nenhuma forma de digitar/inventar
+uma cor fora da lista importada. Também confirmou que **não precisa de logo/ícone de
+marca** nas abas Simonetto/Stimmo — texto simples já é suficiente, gostou do resultado
+como está. Título do modal e da seção no admin simplificados de "Cores oficiais" pra só
+"Cores" (pedido dele).
+
+### Ajuste: distribuir cor por móvel quando há 2+ cores selecionadas
+
+Davi levantou um problema real: com 2+ cores selecionadas (comum pedir 2 cores pra uma
+cozinha, por exemplo), como o Sogno sabe qual cor vai em qual móvel? Cheguei a considerar
+numerar os móveis na imagem pra arquiteta apontar, mas descartei — nenhuma IA de visão
+aqui desenha marcações confiáveis sobre pixels específicos (exigiria um modelo de
+detecção de objetos à parte, mais infraestrutura e mais chance de erro). Solução mais
+simples e robusta, aprovada pelo Davi:
+
+1. **Frontend**: com 1 cor selecionada, insere `"Cor de referência: NOME."` (sem
+   ambiguidade, não precisa de nada a mais). Com 2+, insere um modelo pra completar:
+   `"Cores de referência:\n- NOME1 no(s): ___\n- NOME2 no(s): ___"` — a arquiteta escreve
+   o nome do móvel em cada linha antes de mandar.
+2. **Rede de segurança no system prompt**: se ela mandar sem preencher os `___` (ou
+   mencionar 2+ cores sem deixar claro a distribuição de outra forma), o Sogno **pergunta
+   explicitamente** qual cor vai em qual móvel antes de seguir — nunca escolhe por conta
+   própria. Testado de ponta a ponta com o modelo em branco: o Sogno pediu exatamente a
+   distribuição certa, no tom da persona.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.

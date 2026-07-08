@@ -253,7 +253,7 @@
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
           <button class="icon-btn" id="imageBtn" title="Anexar planta/volumetria pra gerar render">🖼️</button>
-          <button class="icon-btn" id="colorsBtn" title="Cores oficiais Simonetto/Stimmo">🎨</button>
+          <button class="icon-btn" id="colorsBtn" title="Cores Simonetto/Stimmo">🎨</button>
           <button class="icon-btn" id="promptsBtn" title="Biblioteca de prompts">📝</button>
           <button id="generateBtn" style="display:none;">Gerar</button>
           <button id="send">Enviar</button>
@@ -313,7 +313,7 @@
   <div class="modal-overlay" id="colorsOverlay" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title">Cores oficiais</div>
+        <div class="modal-title">Cores</div>
         <button class="modal-close" id="colorsClose">✕</button>
       </div>
       <div class="prompts-body colors-body">
@@ -1190,7 +1190,12 @@
   document.getElementById("colorsUseBtn").addEventListener("click", () => {
     if (!colorsSelected.size) { document.getElementById("colorsMsg").textContent = "Selecione ao menos uma cor."; return; }
     const names = Array.from(colorsSelected.values()).map(v => v.name);
-    const text = "Cores de referência: " + names.join(", ") + ".";
+    // Com 2+ cores, a aplicação de cada uma nos móveis é ambígua — em vez de
+    // só listar os nomes, monta um modelo pra arquiteta preencher qual cor
+    // vai em qual móvel antes de mandar (evita o Sogno ter que adivinhar).
+    const text = names.length === 1
+      ? `Cor de referência: ${names[0]}.`
+      : "Cores de referência:\n" + names.map(n => `- ${n} no(s): ___`).join("\n");
     input.value = input.value ? input.value + "\n" + text : text;
     autosize();
     colorsSelected.clear();
