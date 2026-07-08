@@ -1,4 +1,4 @@
-"""Detecta perguntas sobre qual IA/fornecedor está por trás da Neusa e avisa
+"""Detecta perguntas sobre qual IA/fornecedor está por trás do Sogno e avisa
 o diretor por mensagem de chat direta no ClickUp (não uma tarefa). Ver memória
 "Confidencialidade do stack de IA": Davi quer ser avisado ativamente, não só
 ver a pergunta recusada em silêncio.
@@ -119,7 +119,7 @@ def send_vendor_inquiry_alert(username: str, message_excerpt: str) -> None:
     excerpt = (message_excerpt or "")[:300]
     email = os.environ.get("CLICKUP_ALERT_EMAIL", DEFAULT_ALERT_EMAIL)
     content = (
-        f"🔔 **{username}** perguntou qual IA/tecnologia está por trás da Neusa.\n\n"
+        f"🔔 **{username}** perguntou qual IA/tecnologia está por trás do Sogno.\n\n"
         f"Trecho da mensagem: _{excerpt}_"
     )
     if not send_clickup_dm(email, content) and not os.environ.get("CLICKUP_TOKEN"):

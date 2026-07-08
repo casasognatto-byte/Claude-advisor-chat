@@ -9,6 +9,7 @@ Imports de `app.main` ficam dentro das funções para evitar import circular.
 """
 
 import asyncio
+import json
 import os
 import secrets
 import tempfile
@@ -87,6 +88,11 @@ def init_image_db() -> None:
             # não têm a imagem de origem salva (não dá pra refazer esses).
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS source_path TEXT;")
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS source_mime TEXT;")
+            # Painel "Inspetor" (08/07/2026) — parâmetros estruturados sugeridos
+            # pelo Sogno a partir do prompt/estilo: luz, textura e ângulo de câmera.
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_light TEXT;")
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_texture TEXT;")
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS param_camera TEXT;")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_jobs_user "
                 "ON image_jobs (username, created_at DESC);"
@@ -122,7 +128,8 @@ def _get_job(job_id: str) -> dict | None:
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT id, username, conversation_id, status, error_message, image_path, "
-            "prompt, source_path, source_mime, engine FROM image_jobs WHERE id = %s",
+            "prompt, source_path, source_mime, engine, param_light, param_texture, param_camera "
+            "FROM image_jobs WHERE id = %s",
             (job_id,),
         )
         row = cur.fetchone()
@@ -132,7 +139,55 @@ def _get_job(job_id: str) -> dict | None:
         "id": row[0], "username": row[1], "conversationId": row[2],
         "status": row[3], "error": row[4], "imagePath": row[5],
         "prompt": row[6], "sourcePath": row[7], "sourceMime": row[8], "engine": row[9],
+        "paramLight": row[10], "paramTexture": row[11], "paramCamera": row[12],
     }
+
+
+async def _derive_render_params(prompt: str) -> dict:
+    """Pede ao Claude (mesmo modelo do executor, chamada curta e barata) pra
+    extrair 3 parâmetros estruturados do pedido da arquiteta — luz, textura e
+    ângulo de câmera — pro painel "Inspetor" do frontend. Se a arquiteta já
+    especificou algo, resume o que ela pediu; se não, sugere um padrão
+    razoável (seguindo o comportamento do Sogno de sempre confirmar
+    iluminação e sugerir ângulos de câmera). Nunca derruba o job se falhar —
+    o painel simplesmente fica sem esses dados."""
+    from app.main import EXECUTOR_MODEL, client
+
+    instruction = (
+        "A partir do pedido de render abaixo, extraia 3 campos curtos (até 8 "
+        "palavras cada) para um painel de parâmetros de uma ferramenta de "
+        "renderização de móveis planejados:\n"
+        "- light: iluminação natural/artificial. Se a arquiteta não especificou, "
+        "sugira uma opção razoável e sinalize que é sugestão (ex: \"Sugestão: luz "
+        "quente indireta\").\n"
+        "- texture: textura/material em foco na cena (madeira, pedra, metal etc).\n"
+        "- camera: ângulo de câmera sugerido (ex: \"nível do olhar\", \"detalhe em "
+        "macro\").\n\n"
+        "Responda SOMENTE com um JSON de uma linha, sem markdown, no formato "
+        '{"light": "...", "texture": "...", "camera": "..."}.\n\n'
+        f"Pedido da arquiteta: {prompt or '(nenhuma instrução específica, imagem só)'}"
+    )
+    resp = client.messages.create(
+        model=EXECUTOR_MODEL, max_tokens=200,
+        messages=[{"role": "user", "content": instruction}],
+    )
+    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+    data = json.loads(text)
+    return {
+        "light": str(data.get("light") or "")[:120],
+        "texture": str(data.get("texture") or "")[:120],
+        "camera": str(data.get("camera") or "")[:120],
+    }
+
+
+async def _run_render_params(job_id: str, prompt: str) -> None:
+    """Roda em paralelo à geração da imagem — nunca atrasa nem derruba o
+    render principal se falhar (painel Inspetor simplesmente fica vazio)."""
+    try:
+        params = await _derive_render_params(prompt)
+        _update_job(job_id, param_light=params["light"], param_texture=params["texture"], param_camera=params["camera"])
+    except Exception as e:
+        print(f"[image job {job_id}] falha ao derivar parâmetros do inspetor: {e}")
 
 
 async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str) -> None:
@@ -143,6 +198,7 @@ async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str
         if impl is None:
             raise ImageGenerationError(f"Engine desconhecido: {engine}")
         _update_job(job_id, status="processing")
+        asyncio.create_task(_run_render_params(job_id, prompt))
         result_bytes, result_mime = await impl.generate(image_bytes, mime, _build_prompt(prompt))
         path = _image_path(job_id, result_mime)
         with open(path, "wb") as f:
@@ -306,6 +362,9 @@ def get_job(job_id: str, request: Request):
         "ready": job["status"] == "done",
         "prompt": job["prompt"],
         "canRedo": bool(job["sourcePath"]),
+        "paramLight": job["paramLight"],
+        "paramTexture": job["paramTexture"],
+        "paramCamera": job["paramCamera"],
     }
 
 

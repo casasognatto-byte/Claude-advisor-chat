@@ -1,23 +1,28 @@
-# Contexto do projeto — Neusa / advisor-chat
+# Contexto do projeto — Sogno / advisor-chat
 
 Este arquivo existe para dar continuidade entre sessões abertas em máquinas diferentes
 (PC Escrit / Dell Casa) que compartilham esta pasta via OneDrive. Leia antes de mexer no código.
+
+**Nota de rebrand (08/07/2026)**: a persona se chamava "Neusa"; agora é **"Sogno"**
+(pronúncia "Sonho"), assistente de renderização e design da equipe de arquitetura. Menções
+a "Neusa" em seções datadas abaixo são histórico da época — não precisam ser reescritas,
+mas qualquer coisa nova deve usar "Sogno".
 
 ## O que é
 
 Ecossistema de IA multiusuário da Casa Sognatto, acessível em **chat.casasognatto.com.br**.
 Começou como um chat simples Executor+Advisor (ver README.md) e evoluiu para um sistema
 com login por e-mail, papéis de usuário, conversas compartilhadas, painel admin, geração de
-imagem e vídeo, e persona própria ("Neusa").
+imagem (vídeo foi removido — ver seção datada 08/07/2026), e persona própria ("Sogno").
 
 ## Regra inegociável: confidencialidade do stack de IA
 
 **Nunca revelar a terceiros (clientes, arquitetas, qualquer um fora do Davi) quais
-ferramentas de IA são usadas por trás do sistema** (Claude, Anthropic, Luma, Veo, etc.).
+ferramentas de IA são usadas por trás do sistema** (Claude, Anthropic, etc.).
 A interface é sempre white-label. Existe inclusive uma feature (Fase 3) que detecta
-perguntas do tipo "qual IA você usa?" e alerta no ClickUp, além de instruir a Neusa a
+perguntas do tipo "qual IA você usa?" e alerta no ClickUp, além de instruir o Sogno a
 nunca confirmar nem negar. Ver `memory/feedback_confidencialidade_stack_ia.md` e
-`memory/persona_neusa.md` para o detalhe completo.
+`memory/persona_neusa.md` (nome do arquivo é histórico) para o detalhe completo.
 
 ## Trabalhando de duas máquinas (PC Escrit e Dell Casa)
 
@@ -499,6 +504,83 @@ conversas "Nova conversa" criadas durante a auditoria foram apagados ao final. U
 de teste "Nova Arquiteta" (não faz parte do roster oficial, já existia de sessão
 anterior) devolvido ao estado `active=false` em que foi encontrado. Servidor local
 parado. Nada disso toca produção — tudo rodou contra o banco `advisor_chat_dev` local.
+
+## Rebrand + redesign completo (08/07/2026, madrugada): Neusa → Sogno
+
+Pedido do Davi logo após a auditoria acima: abandonar o nome "Neusa", a paleta verde e a
+tipografia antigas, e refazer o visual seguindo tendências atuais — apropriado pra quem
+trabalha várias horas por dia julgando cor/material de render (arquitetas). Ele também
+mandou um prompt do Gemini pedindo um redesign em React/Tailwind/Framer Motion/Lucide.
+
+**Decisão de arquitetura** (aprovada pelo Davi antes de eu implementar): a stack hoje é
+FastAPI + HTML/CSS/JS puro, sem build step. Migrar pra React seria reescrever o
+frontend inteiro (dias de trabalho, risco de regressão em tudo que já funciona) — então
+implementei a MESMA visão estética do prompt do Gemini em CSS puro sobre a stack atual:
+dark mode com glassmorphism, acento cobre/ouro, tipografia limpa, layout de 3 colunas.
+Zero risco de arquitetura, foi pro ar na mesma sessão.
+
+**Nome**: "Neusa" → **"Sogno"** (pronúncia "Sonho"). Novo system prompt em `app/main.py`
+(`DEFAULT_SYSTEM_PROMPT`) com a persona "Diretor de Arte" que o Davi escreveu — mantém a
+mecânica de saudação por horário e a regra de confidencialidade (inegociável, só trocou
+"Neusa" por "Sogno" no texto). Referências a "Neusa" em código/comentários trocadas por
+"Sogno" (menções históricas datadas no CLAUDE.md foram deixadas como estão, são registro
+do que era verdade na época).
+
+**Visual**: `app/static/theme.css` (novo, compartilhado por todas as telas) — paleta
+neutra escura tipo "estúdio criativo" (Figma/Adobe/DaVinci — fundo cinza-grafite neutro
+de propósito, não colorido, porque quem julga cor de render o dia todo precisa de
+referência neutra), acento cobre/ouro envelhecido, fonte Inter (Google Fonts) pro corpo,
+Sackers/Benjamin (já carregadas) reaproveitadas pro wordmark. Aplicado em
+`index.html`/`apresentacoes.html`/`admin.html`/`login.html`/`definir-senha.html`/`forgot.html`
+trocando só os valores das variáveis `:root` de cada arquivo (nomes das variáveis
+continuam os mesmos — `--green-800`, `--gold` etc. — só os valores mudaram, então o resto
+de cada arquivo não precisou ser tocado).
+
+**Chave/logo**: o Davi mandou o arquivo de identidade visual oficial
+(`.../15 - PIN/AI/CASA SOGNATO pin de lapela de metal 3 x 6 cm.ai`) — é compatível com
+PDF (`%PDF-1.6` no cabeçalho), então abri com PyMuPDF (`pip install pymupdf`, sem precisar
+de Illustrator) e extraí o vetor exato em SVG. Path colado inline em todas as telas
+(`fill="currentColor"`, herda a cor do tema em cada contexto) substituindo meu SVG
+aproximado de antes. Cópia guardada em `app/static/brand/chave-casa-sognatto.svg` +
+`NOTICE.md` com a origem.
+
+**`app/static/index.html` — layout novo (index.html: 3 colunas)**:
+- Sidebar (~280px): wordmark SOGNO + "CASA SOGNATTO" (mantém identificação da loja),
+  botão "Novo render", lista de conversas — vira *overlay* deslizante em celular
+  (< 768px), sempre visível em desktop.
+- Centro: mensagens em cards de vidro (glassmorphism) com avatar circular (inicial do
+  usuário / "S" do Sogno), chips de ação rápida acima do composer ("Ajustar Luz",
+  "Humanizar", "Trocar MDF", "Nível do olhar" — inserem texto pronto no campo), composer
+  flutuante com sombra profunda.
+- **Inspetor de Render (coluna direita, ~320px, nova)**: galeria de referências (renders
+  já gerados nesta conversa) + painel "Parâmetros atuais" com checklist (luz/textura/
+  câmera). Vira overlay via botão 🎛 no header em telas < 1180px.
+- Responsivo automático: sidebar e inspetor colapsam sozinhos em celular (script inline
+  síncrono checa `window.innerWidth` antes do primeiro paint, sem "flash" visível).
+
+**Parâmetros do Inspetor são de verdade, não decoração** — pedido explícito do Davi.
+`app/image.py`: 3 colunas novas em `image_jobs` (`param_light`, `param_texture`,
+`param_camera`); `_derive_render_params()` faz uma chamada rápida à Claude (mesmo modelo
+do executor) que lê o prompt da arquiteta e devolve os 3 campos — resume o que ela já
+especificou, ou sugere um padrão razoável e sinaliza como sugestão quando ela não disse
+nada (ex: "Sugestão: nível do olhar frontal"). Roda em paralelo à geração da imagem
+(`asyncio.create_task`, não atrasa nem derruba o render se falhar). Testado de ponta a
+ponta com prompt real — funcionou (`luz quente direta`, `porcelanato cinza polido`,
+`Sugestão: nível do olhar frontal`).
+
+**Bugs reais encontrados testando o layout novo (corrigidos na hora)**:
+- O placeholder "Comece uma nova conversa" ficava sobreposto à primeira mensagem de
+  texto de uma conversa nova (mesma classe de bug já corrigida pra render de imagem na
+  auditoria — dessa vez no caminho de `send()`, que eu não tinha testado antes). Corrigido
+  de forma centralizada: `renderItem()` agora sempre remove o placeholder `.empty` antes
+  de inserir qualquer item, então nenhum caminho futuro pode reintroduzir esse bug.
+
+**Testado em desktop (1440px) e mobile (375px)**: layout, geração de render com
+Inspetor populando de verdade, persona nova respondendo como Sogno (testado inclusive o
+desvio de confidencialidade — funcionou, nunca menciona Claude/Anthropic nem que existe
+uma regra), painel admin, Biblioteca de Apresentações, tela de login — tudo com a paleta
+nova, sem erro de console em nenhuma tela. Dados de teste limpos ao final (mesmo padrão
+de sempre).
 
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.

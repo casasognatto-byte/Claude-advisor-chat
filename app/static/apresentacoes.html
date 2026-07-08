@@ -3,21 +3,21 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Casa Sognatto · Apresentações</title>
+<title>Sogno · Apresentações</title>
+<link rel="stylesheet" href="/static/theme.css" />
 <style>
   @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-display:swap; }
   @font-face { font-family:'Sackers'; src:url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display:swap; }
-  @font-face { font-family:'NeueMontreal'; src:url('/static/fonts/PPNeueMontreal.ttf') format('truetype'); font-display:swap; }
 
   :root {
-    --green-950: #0b1a10; --green-900: #0f2114; --green-800: #152C1C;
-    --green-700: #1d3a27; --green-600: #274a34;
-    --cream: #ece9e1; --muted: #93a597; --gold: #c2a06a; --gold-soft: #d8bd8b;
-    --border: #2a4434;
+    --green-950: #0a0a0a; --green-900: #121212; --green-800: #1c1c1c;
+    --green-700: #262626; --green-600: #333333;
+    --cream: #f0ede6; --muted: #a3a09a; --gold: #c9975a; --gold-soft: #dcb17e;
+    --border: rgba(255,255,255,.08);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { margin: 0; font-family: 'NeueMontreal', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); min-height: 100vh; }
+  body { margin: 0; font-family: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); min-height: 100vh; }
 
   header { padding: 14px 22px; background: var(--green-900); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .h-left { display: flex; align-items: center; gap: 10px; }
@@ -118,11 +118,8 @@
 <body>
 <header>
   <div class="h-left">
-    <svg class="key" width="16" height="32" viewBox="0 0 60 120" fill="none">
-      <g stroke="currentColor" stroke-width="6"><circle cx="30" cy="20" r="10"/><circle cx="18" cy="37" r="10"/><circle cx="42" cy="37" r="10"/></g>
-      <rect x="26.5" y="50" width="7" height="58" rx="1.5" fill="currentColor"/>
-      <rect x="33.5" y="92" width="11" height="6" fill="currentColor"/>
-      <rect x="33.5" y="102" width="8" height="6" fill="currentColor"/>
+    <svg class="key" width="16" height="28" viewBox="0 0 113.386 198.425" fill="currentColor">
+      <path transform="matrix(1,0,0,-1,23.6487,60.9236)" d="M0 0C.003 3.482 1.398 6.591 3.677 8.878 5.964 11.157 9.073 12.553 12.555 12.555 16.037 12.553 19.146 11.157 21.433 8.878 23.712 6.591 25.108 3.482 25.111 0 25.108-3.482 23.712-6.591 21.433-8.878 19.146-11.157 16.037-12.553 12.555-12.555 9.073-12.553 5.964-11.157 3.677-8.878 1.398-6.591 .003-3.482 0 0M23.042-25.931 24.437-17.806 33.103-13.01 41.77-17.806 43.165-25.931 36.282-27.25 35.548-21.027H30.659L29.926-27.25ZM30.391-34.318H35.816L34.812-39.009H31.395ZM41.097 0C41.1 3.482 42.495 6.591 44.775 8.878 47.062 11.157 50.17 12.553 53.652 12.555 57.134 12.553 60.243 11.157 62.53 8.878 64.809 6.591 66.205 3.482 66.208 0 66.205-3.482 64.809-6.591 62.53-8.878 60.243-11.157 57.134-12.553 53.652-12.555 50.17-12.553 47.062-11.157 44.775-8.878 42.495-6.591 41.1-3.482 41.097 0M44.089 26.349C44.087 23.3 42.867 20.583 40.872 18.581 38.869 16.585 36.152 15.365 33.103 15.363 30.055 15.365 27.339 16.585 25.336 18.581 23.34 20.584 22.12 23.3 22.118 26.349 22.12 29.397 23.34 32.114 25.336 34.117 27.339 36.112 30.055 37.332 33.103 37.334 36.152 37.332 38.869 36.112 40.872 34.117 42.867 32.114 44.087 29.397 44.089 26.349M-9.416 0C-9.419-6.052-6.95-11.575-2.981-15.536 .98-19.505 6.503-21.974 12.555-21.971 13.45-21.972 14.327-21.897 15.195-21.789V-30.352C15.197-30.352 26.662-31.45 22.805-42.632 22.649-43.082 22.887-43.556 23.334-43.717 24.822-44.253 27.693-46.01 27.693-51.578V-95.686H13.444V-104.493H18.76V-109.423H13.444V-118.23H27.693V-123.328H38.514V-51.578C38.514-45.996 41.399-44.245 42.884-43.713 43.328-43.554 43.565-43.086 43.416-42.638 39.709-31.497 51.012-30.352 51.012-30.352V-21.789C51.88-21.896 52.757-21.972 53.652-21.971 59.705-21.974 65.227-19.505 69.188-15.536 73.157-11.575 75.626-6.052 75.623 0 75.626 6.052 73.157 11.575 69.188 15.536 65.227 19.505 59.705 21.974 53.652 21.971L53.013 21.939C53.328 23.363 53.506 24.835 53.505 26.349 53.508 31.968 51.215 37.098 47.53 40.775 43.853 44.46 38.723 46.753 33.103 46.751 27.485 46.753 22.355 44.46 18.677 40.775 14.993 37.098 12.699 31.968 12.702 26.349 12.701 24.835 12.879 23.363 13.194 21.939 12.98 21.945 12.771 21.971 12.555 21.971 6.503 21.974 .98 19.505-2.981 15.536-6.95 11.575-9.419 6.052-9.416 0"/>
     </svg>
     <div class="h-title">Apresentações</div>
   </div>
@@ -187,7 +184,7 @@
   <!-- ---------------- Padrões técnicos ---------------- -->
   <section class="view" id="view-patterns">
     <h2>Biblioteca de padrões técnicos</h2>
-    <div class="muted">Ex: "cristaleira" + "lateral de vidro" → "LED indireto ao fundo". A Neusa sugere isso na entrevista em vez de perguntar do zero.</div>
+    <div class="muted">Ex: "cristaleira" + "lateral de vidro" → "LED indireto ao fundo". O Sogno sugere isso na entrevista em vez de perguntar do zero.</div>
     <table>
       <thead><tr><th>Móvel</th><th>Atributo</th><th>Recomendação</th><th></th></tr></thead>
       <tbody id="patternsBody"></tbody>

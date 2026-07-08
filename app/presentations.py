@@ -1,4 +1,4 @@
-"""Biblioteca de Apresentações — Fase 4: a Neusa como arquiteta auxiliar.
+"""Biblioteca de Apresentações — Fase 4: o Sogno como arquiteta auxiliar.
 
 Fluxo: a arquiteta cria um "projeto de cliente", sobe as imagens exportadas
 do Promob (em qualquer ordem) e o sistema classifica cada uma por ambiente
@@ -554,7 +554,7 @@ def delete_image(project_id: str, image_id: str, request: Request):
     return {"ok": True}
 
 
-# A geração de vídeo foi removida da Neusa em 08/07/2026 (decisão do Davi:
+# A geração de vídeo foi removida do Sogno em 08/07/2026 (decisão do Davi:
 # o fornecedor de vídeo não mantinha fidelidade ao projeto — inventava
 # ambientes e mudava materiais; foco do produto passou a ser renders de
 # imagem + apresentações). O endpoint de vídeo por imagem que vivia aqui e

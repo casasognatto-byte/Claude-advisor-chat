@@ -1,0 +1,116 @@
+/* Tema visual do Sogno (Casa Sognatto) — dark studio / glassmorphism.
+   Rebrand 08/07/2026: abandona a paleta verde antiga da "Neusa" por um visual
+   mais próximo de ferramentas de estúdio criativo (Figma/Adobe/DaVinci) —
+   cinza-grafite neutro de propósito, porque quem julga cor e material de
+   render o dia inteiro precisa de um fundo neutro, não colorido, pra não
+   distorcer a percepção de cor da própria imagem. Acento em cobre/ouro
+   envelhecido preserva a identidade de luxo da marca. Compartilhado por
+   todas as telas (index, apresentações, admin, login, etc). */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  /* Base neutra (estúdio escuro) */
+  --bg-950: #0a0a0a;
+  --bg-900: #121212;
+  --bg-850: #161616;
+  --bg-800: #1c1c1c;
+  --bg-700: #262626;
+
+  /* Painéis "vidro" (glassmorphism) */
+  --glass-bg: rgba(23, 23, 23, .55);
+  --glass-bg-soft: rgba(255, 255, 255, .03);
+  --glass-border: rgba(255, 255, 255, .06);
+  --glass-blur: 20px;
+
+  /* Texto */
+  --text: #f0ede6;
+  --text-dim: #a3a09a;
+  --muted: #757169;
+
+  /* Acento cobre/ouro envelhecido */
+  --accent: #c9975a;
+  --accent-soft: #dcb17e;
+  --accent-dim: rgba(201, 151, 90, .16);
+  --accent-border: rgba(201, 151, 90, .3);
+
+  /* Estado */
+  --danger: #e0796b;
+  --danger-bg: rgba(224, 121, 107, .12);
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --shadow-deep: 0 24px 70px rgba(0, 0, 0, .55);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, .35);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  height: 100%;
+  font-family: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg-950);
+  color: var(--text);
+}
+body { margin: 0; }
+
+::selection { background: var(--accent-dim); color: var(--text); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-700); border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-dim); }
+
+/* Wordmark "SOGNO" / "CASA SOGNATTO" — reaproveita as fontes já carregadas
+   pelo projeto (mesma tipografia da marca, ver imagens de referência). */
+@font-face { font-family: 'Benjamin'; src: url('/static/fonts/FSBenjamin-Light.otf') format('opentype'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Benjamin'; src: url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Sackers'; src: url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display: swap; }
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+}
+
+.wordmark { display: flex; align-items: center; gap: 10px; }
+.wordmark .key-icon { color: var(--accent); flex: none; }
+.wordmark .casa { font-family: 'Sackers'; font-size: 8px; letter-spacing: .42em; color: var(--text-dim); padding-left: .42em; }
+.wordmark .sogno { font-family: 'Benjamin'; font-size: 19px; letter-spacing: .05em; color: var(--text); line-height: 1; }
+
+/* Botões — vocabulário compartilhado */
+.btn {
+  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .02em;
+  border-radius: var(--radius-sm); padding: 10px 16px; cursor: pointer;
+  border: 1px solid transparent; transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-primary { background: var(--accent); color: #1a1208; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-soft); }
+.btn-ghost { background: var(--glass-bg-soft); color: var(--text); border-color: var(--glass-border); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent-soft); }
+.btn-danger { background: transparent; color: var(--danger); border-color: rgba(224,121,107,.35); }
+.btn-danger:hover:not(:disabled) { background: var(--danger-bg); }
+
+input[type="text"], input[type="email"], input[type="password"], input[type="file"],
+textarea, select {
+  font-family: inherit; font-size: 14px; color: var(--text);
+  background: var(--glass-bg-soft); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm); padding: 10px 12px;
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-border); }
+input::placeholder, textarea::placeholder { color: var(--muted); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--glass-bg-soft); border: 1px solid var(--glass-border);
+  border-radius: 999px; padding: 6px 13px; font-size: 12.5px; color: var(--text-dim);
+  cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.chip:hover { border-color: var(--accent-border); color: var(--text); }
+.chip.active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent-soft); }
+
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
