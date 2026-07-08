@@ -288,5 +288,24 @@ autorização), botão "Limpar" pra erros acumulados na tela (ver seção acima)
 (STT/TTS) e montagem de vídeo final via Creatomate — ver
 `../memory/project_neusa_apresentacoes_arquitetas.md` pro roadmap completo e atualizado.
 
+## Estado em 07/07/2026 (continuação — botão "Gerar" no composer)
+
+**Push feito, `main`/`origin/main` sincronizados em `ecfac25`.** Pedido do Davi: não queria
+que anexar uma imagem nos ícones 🖼️/🎬 do composer disparasse a geração na hora (como era) —
+queria poder ajustar o prompt com calma antes de confirmar.
+
+Implementado: selecionar arquivo agora só "encena" (chip com nome + botão remover, numa
+fileira acima do campo de mensagem); um botão **"Gerar"** (vira "Gerar vídeo" quando o tipo
+encenado é vídeo) só aparece quando há algo na fileira, e é ele quem dispara a chamada de
+verdade — usando o texto que estiver no campo de mensagem naquele momento como prompt.
+Suporta múltiplas imagens encenadas de uma vez (reaproveita o `multiple` já existente no
+input), cada uma removível antes de gerar; vídeo continua um arquivo por vez (mesma
+capacidade de antes). Revisado (self-review, sem findings) e testado localmente antes do
+push: anexar sem chamar API, múltiplas imagens com remoção individual (confirmado só 1
+POST pra quem ficou), geração de vídeo mostrando o texto certo do botão.
+
+**Nota de ambiente recorrente**: `.venv` quebrado de novo ao retomar nesta máquina (mesmo
+sintoma documentado no topo deste arquivo) — recriado sem problema.
+
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
