@@ -244,12 +244,7 @@
     <footer>
       <div class="composer-card">
         <div class="staged-row" id="stagedRow" style="display:none;"></div>
-        <div class="quick-actions" id="quickActions">
-          <span class="chip" data-insert="Ajustar a iluminação: ">☀ Ajustar Luz</span>
-          <span class="chip" data-insert="Humanizar a cena: adicionar elementos como livros, plantas e objetos de decoração para dar vida ao ambiente.">🌿 Humanizar</span>
-          <span class="chip" data-insert="Trocar o MDF/MDP por: ">🪵 Trocar MDF</span>
-          <span class="chip" data-insert="Ângulo de câmera: nível do olhar.">📷 Nível do olhar</span>
-        </div>
+        <div class="quick-actions" id="quickActions"></div>
         <div class="composer">
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
@@ -682,15 +677,29 @@
     }
   }
 
-  // ---------- Chips de ação rápida (inserem texto no composer) ----------
-  document.querySelectorAll("#quickActions .chip").forEach(chip => {
-    chip.addEventListener("click", () => {
-      const text = chip.dataset.insert || "";
-      input.value = input.value ? input.value + "\n" + text : text;
-      autosize();
-      input.focus();
-    });
-  });
+  // ---------- Chips de ação rápida (prompts favoritados por essa pessoa) ----------
+  // Substituem os 4 chips de texto fixo que existiam antes — agora vêm da
+  // Biblioteca de Prompts (📝), então cada arquiteta escolhe/edita os
+  // próprios atalhos em vez de um conjunto fixo igual pra todo mundo.
+  async function loadQuickActions() {
+    const wrap = document.getElementById("quickActions");
+    let favs = [];
+    try { favs = await fetch("/api/prompts/favorites").then(r => r.ok ? r.json() : []); } catch (_) {}
+    wrap.innerHTML = "";
+    for (const f of favs) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = f.name;
+      chip.title = f.content;
+      chip.addEventListener("click", () => {
+        input.value = input.value ? input.value + "\n" + f.content : f.content;
+        autosize();
+        input.focus();
+      });
+      wrap.appendChild(chip);
+    }
+  }
+  loadQuickActions();
 
   // ---------- Arquivos "em espera" (anexa, ajusta o prompt, só gera ao clicar) ----------
   let stagedKind = null;   // sempre "image" — vídeo foi removido em 08/07/2026
@@ -808,6 +817,7 @@
   let promptsTab = "predefined"; // "predefined" | "personal"
   let promptsMode = "list";      // "list" | "trash"
   let promptsSelected = null;    // { kind: "predefined"|"personal", id, name, category, content, owner? }
+  let promptsFavoriteKeys = new Set(); // "kind:id" — vira chip de atalho no composer
 
   const promptsOverlay = document.getElementById("promptsOverlay");
   const promptsListEl = document.getElementById("promptsList");
@@ -840,6 +850,10 @@
     if (!promptsUsers.length) {
       try { promptsUsers = await fetch("/api/users").then(r => r.ok ? r.json() : []); } catch (_) {}
     }
+    try {
+      const favs = await fetch("/api/prompts/favorites").then(r => r.ok ? r.json() : []);
+      promptsFavoriteKeys = new Set(favs.map(f => f.kind + ":" + f.id));
+    } catch (_) {}
     clearPromptForm();
     await refreshPromptsList();
   }
@@ -988,6 +1002,13 @@
 
     addBtn("Usar este prompt", "primary", useSelectedPrompt);
 
+    if (promptsSelected && promptsSelected.id) {
+      const favKey = promptsSelected.kind + ":" + promptsSelected.id;
+      const isFav = promptsFavoriteKeys.has(favKey);
+      addBtn(isFav ? "★ Nos atalhos rápidos" : "☆ Adicionar aos atalhos rápidos", "",
+        () => toggleFavorite(promptsSelected.kind, promptsSelected.id));
+    }
+
     if (isOwnPersonal) {
       addBtn("Salvar alterações", "", () => savePersonalPrompt(promptsSelected.id));
     } else {
@@ -1004,6 +1025,24 @@
     }
     if (isOwnPersonal) addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
     if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
+  }
+
+  async function toggleFavorite(kind, id) {
+    const key = kind + ":" + id;
+    try {
+      if (promptsFavoriteKeys.has(key)) {
+        await fetch(`/api/prompts/favorites/${kind}/${id}`, { method: "DELETE" });
+        promptsFavoriteKeys.delete(key);
+      } else {
+        await fetch("/api/prompts/favorites", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ kind, promptId: id }),
+        });
+        promptsFavoriteKeys.add(key);
+      }
+      renderPromptsActions();
+      await loadQuickActions();
+    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
   }
 
   async function undoPrompt(kind, id) {

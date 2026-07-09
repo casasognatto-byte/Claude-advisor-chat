@@ -136,8 +136,64 @@ def init_prompts_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_deleted_prompts_lookup "
                 "ON deleted_prompts (kind, restored, deleted_at DESC);"
             )
+            # Favoritos por pessoa — viram os chips de atalho no composer
+            # (09/07/2026: substituem os 4 chips de texto fixo que existiam
+            # antes; cada arquiteta favorita os prompts que quer ter à mão).
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS favorite_prompts (
+                    username   TEXT NOT NULL,
+                    kind       TEXT NOT NULL,
+                    prompt_id  TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                    PRIMARY KEY (username, kind, prompt_id)
+                );
+                """
+            )
+        _seed_default_favorites()
     except Exception as e:
         print(f"[init_prompts_db] falha: {e}")
+
+
+def _seed_default_favorites() -> None:
+    """Migração única: os chips fixos 'Humanizar' e 'Nível do olhar' (só
+    esses dois eram frases prontas de verdade — 'Ajustar Luz' e 'Trocar MDF'
+    só escreviam um rótulo incompleto e foram descartados, o segundo já é
+    coberto melhor pelo seletor de Cores) viram prompts pré-definidos de
+    verdade, editáveis e removíveis, favoritados por padrão pra todo mundo já
+    ter os mesmos atalhos de antes."""
+    from app.main import _db
+
+    seeds = [
+        ("Humanizar", "Humanizar a cena: adicionar elementos como livros, plantas e objetos de "
+                       "decoração para dar vida ao ambiente."),
+        ("Nível do olhar", "Ângulo de câmera: nível do olhar."),
+    ]
+    with _db() as conn, conn.cursor() as cur:
+        seed_ids = []
+        for name, content in seeds:
+            cur.execute("SELECT id FROM predefined_prompts WHERE name = %s", (name,))
+            row = cur.fetchone()
+            if row:
+                seed_ids.append(row[0])
+                continue
+            pid = "pp" + secrets.token_hex(8)
+            cur.execute(
+                "INSERT INTO predefined_prompts (id, name, category, content, created_by) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (pid, name, "Outro", content, "sistema"),
+            )
+            seed_ids.append(pid)
+
+        cur.execute("SELECT username FROM users WHERE active")
+        usernames = [r[0] for r in cur.fetchall()]
+        for username in usernames:
+            for pid in seed_ids:
+                cur.execute(
+                    "INSERT INTO favorite_prompts (username, kind, prompt_id) VALUES (%s, %s, %s) "
+                    "ON CONFLICT DO NOTHING",
+                    (username, "predefined", pid),
+                )
 
 
 # --- Categorias / listagem geral --------------------------------------------
@@ -256,6 +312,65 @@ def restore_deleted(log_id: int, request: Request):
             )
         cur.execute("UPDATE deleted_prompts SET restored = true WHERE id = %s", (log_id,))
     return {"id": new_id}
+
+
+# --- Favoritos: viram os chips de atalho no composer, por pessoa ------------
+class FavoriteBody(BaseModel):
+    kind: str
+    promptId: str
+
+
+@router.get("/favorites")
+def list_favorites(request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT kind, prompt_id FROM favorite_prompts WHERE username = %s ORDER BY created_at",
+            (user["username"],),
+        )
+        favs = cur.fetchall()
+        result = []
+        for kind, prompt_id in favs:
+            table = "predefined_prompts" if kind == "predefined" else "personal_prompts"
+            cur.execute(f"SELECT id, name, content FROM {table} WHERE id = %s", (prompt_id,))
+            row = cur.fetchone()
+            if row:
+                result.append({"kind": kind, "id": row[0], "name": row[1], "content": row[2]})
+    return result
+
+
+@router.post("/favorites")
+def add_favorite(body: FavoriteBody, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    if body.kind not in ("predefined", "personal"):
+        raise HTTPException(400, "kind inválido.")
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO favorite_prompts (username, kind, prompt_id) VALUES (%s, %s, %s) "
+            "ON CONFLICT DO NOTHING",
+            (user["username"], body.kind, body.promptId),
+        )
+    return {"ok": True}
+
+
+@router.delete("/favorites/{kind}/{prompt_id}")
+def remove_favorite(kind: str, prompt_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM favorite_prompts WHERE username = %s AND kind = %s AND prompt_id = %s",
+            (user["username"], kind, prompt_id),
+        )
+    return {"ok": True}
 
 
 def _save_version(cur, kind: str, prompt_id: str, name: str, category, content: str, saved_by: str) -> None:
