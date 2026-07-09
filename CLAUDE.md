@@ -789,3 +789,71 @@ precisou sair.
 
 Para o histórico completo do projeto, decisões e detalhes técnicos, ver
 `../memory/project_render_to_video_arquitetas.md`.
+
+## Nota: as 4 pendências acima (R2/SECRET_KEY) foram todas resolvidas em sessões seguintes
+
+Este arquivo ficou sem atualização por várias sessões enquanto bastante coisa aconteceu.
+Resumo rápido pra não reinvestigar o que já está resolvido:
+
+- **R2 configurado e confirmado em produção** (`r2_enabled: true` em `/api/health`,
+  bucket real `sogno-advisor-chat`) — renders do chat persistem entre deploys.
+- **`SECRET_KEY` fixo** via `generateValue: true` no `render.yaml` — login não cai
+  mais sozinho a cada deploy.
+- **`IMAGE_ENGINE=nanobanana` funcionando de verdade** — o problema real era um
+  `IMAGE_ENGINE=stub` esquecido em produção (não o `GOOGLE_API_KEY`, que já estava
+  certo há mais tempo); corrigido manualmente pelo Davi no painel do Render.
+- **GitHub por SSH** (bloqueio de porta 443 por rede) — contorno permanente já
+  documentado numa seção anterior deste arquivo, continua em uso.
+- **Biblioteca de Apresentações**: "Modelos de Apresentação" (vários nomeados)
+  simplificado pra um único conjunto implícito **Abertura/Fechamento** por vez; aba
+  "Padrões Técnicos" removida (redundante com a Biblioteca de Prompts — tabelas
+  `style_patterns`/`style_pattern_versions`/`deleted_style_patterns` ficaram no schema,
+  só o endpoint/UI saiu); "Projetos" renomeado pra "Apresentações" em toda a tela
+  (`apresentacoes.html`: "Apresentações de Clientes", "Criar Apresentação").
+- PDF do deck e link público animado (`/apresentacao/{token}`) confirmados
+  funcionando ponta a ponta.
+
+## Sessão atual (09/07/2026): redesenho de sidebar/composer + exclusão em lote
+
+Pedido do Davi, 11 itens de uma vez (ver conversa pra lista completa). Implementado e
+testado localmente (servidor `advisor-chat-local`, porta 8001, `advisor_chat_dev`),
+commit `53932fb`, push confirmado com o Davi antes de subir.
+
+- **Sidebar**: botão "Apresentações" saiu do rodapé e foi pra logo abaixo de
+  "＋ Novo render", com a classe `.new-btn` (mesmo tamanho/cor). Botão "Painel" tirado
+  do rodapé (o atalho ⚙ no cabeçalho já cobre isso pro diretor).
+- **Composer**: os 4 chips de texto fixo (Ajustar Luz/Humanizar/Trocar MDF/Nível do
+  olhar) já tinham virado uma fileira de "atalhos favoritados" numa sessão anterior —
+  essa fileira foi removida de vez. No lugar dela, os três ícones que ficavam ao lado
+  do campo de texto (🖼️/🎨/📝) viraram chips descritivos (ícone + texto, pílula
+  arredondada, classe `.action-chip`), na ordem **Anexar arquivo → Cores
+  Simonetto/Stimmo → Biblioteca de Prompts**. Os prompts "Humanizar"/"Nível do olhar"
+  continuam existindo normalmente dentro da Biblioteca de Prompts, só não são mais
+  atalho fixo no composer.
+- **Removido por decisão própria, não pedido explicitamente**: o botão ★/☆ "atalhos
+  rápidos" dentro do modal de prompts (que favoritava um prompt pra aparecer na
+  fileira acima) ficou órfão sem consumidor depois da remoção acima — tirado da UI pra
+  não deixar um controle sem efeito visível. Endpoints `GET/POST/DELETE
+  /api/prompts/favorites` e a tabela `favorite_prompts` **continuam no backend**, sem
+  uso pelo frontend agora — avaliar no futuro se vale apagar de vez ou se surge outro
+  uso. Se o Davi preferir ter o botão de volta (mesmo sem efeito imediato hoje), é
+  reversível.
+- **Botão "Voltar"** adicionado no cabeçalho dos modais de Cores e de Prompts (ao lado
+  do ✕), mesma função de fechar.
+- **Exclusão em lote de conversas** (sidebar principal, não é o painel admin): botão
+  "Selecionar" no rodapé ativa um modo com checkbox por conversa + "Selecionar
+  todas"/"Excluir selecionadas". Novo endpoint `POST /api/conversations/bulk-delete`
+  em `app/main.py` (mesmo padrão do bulk-delete que já existia só no admin, mas este
+  aqui é pra qualquer membro logado excluir da própria lista compartilhada — mesma
+  regra de permissão que a exclusão individual já tinha, sem dono exclusivo).
+
+**Ainda pendente desta lista de 11 itens — não é mudança de código, é dado**: renomear
+uma conversa específica de "Trocar o MDF/MDP por:" pra "Baixar imagens" (o Davi anexou
+print). O mecanismo já existe (clique duplo no título da conversa na sidebar abre um
+prompt pra renomear) — mais rápido o próprio Davi fazer isso direto (2 cliques) do que
+eu ir atrás dessa conversa específica em produção. Avisar se preferir que eu faça.
+
+**Nota de ambiente**: criado `.claude/launch.json` (perfil `advisor-chat-local`, porta
+8001, roda `uvicorn app.main:app --reload` a partir do `.venv`) pra testar via
+`preview_start` — não estava versionado antes, fica como conveniência pras próximas
+sessões (não sincroniza por git, mas sincroniza pela pasta OneDrive normalmente).
