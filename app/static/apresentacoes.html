@@ -130,8 +130,7 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-view="projects">Projetos</button>
-  <button class="tab-btn" data-view="templates">Modelos de apresentação</button>
-  <button class="tab-btn" data-view="patterns">Padrões técnicos</button>
+  <button class="tab-btn" data-view="templates">Abertura / Fechamento</button>
 </nav>
 
 <main>
@@ -160,10 +159,6 @@
         <button class="danger" id="deleteProjectBtn">Apagar projeto</button>
       </div>
       <div class="form-row">
-        <span class="muted">Modelo de apresentação:</span>
-        <select id="projectTemplateSelect"></select>
-      </div>
-      <div class="form-row">
         <button class="ghost" id="shareBtn">🔗 Gerar link público</button>
         <input type="text" id="shareUrlInput" readonly style="display:none; flex:1; min-width:240px;" />
         <button class="ghost" id="shareCopyBtn" style="display:none;">Copiar</button>
@@ -178,72 +173,28 @@
     </div>
   </section>
 
-  <!-- ---------------- Modelos de apresentação ---------------- -->
+  <!-- ---------------- Abertura / Fechamento ---------------- -->
   <section class="view" id="view-templates">
-    <div id="templatesList">
-      <h2>Modelos de apresentação</h2>
-      <div class="muted">Cada modelo tem slides de abertura e de fechamento. Um projeto de cliente escolhe um modelo — o deck final fica sempre: abertura → imagens do cliente → fechamento.</div>
-      <table>
-        <thead><tr><th>Nome</th><th>Slides</th><th>Criado por</th><th></th></tr></thead>
-        <tbody id="templatesBody"></tbody>
-      </table>
-      <div class="empty" id="templatesEmpty" style="display:none;">Nenhum modelo ainda.</div>
-      <div class="form-row">
-        <input id="newTemplateName" placeholder="Nome do modelo (ex: Simonetto)" />
-        <button class="primary" id="createTemplateBtn">Criar modelo</button>
-      </div>
-    </div>
+    <h2>Abertura / Fechamento</h2>
+    <div class="muted">Salve os modelos de abertura e fechamento</div>
 
-    <div id="templateDetail" style="display:none;">
-      <div class="back-row"><button class="ghost" id="backToTemplates">← Voltar aos modelos</button></div>
-      <h2 id="templateTitle">—</h2>
-
-      <h3>Abertura</h3>
-      <div class="form-row">
-        <input type="file" id="openUpload" accept="image/*" />
-        <input type="text" id="openCaption" placeholder="Legenda" />
-        <button class="primary" id="openAddBtn">Adicionar</button>
-      </div>
-      <div class="slide-grid" id="openGrid"></div>
-      <div class="empty" id="openEmpty" style="display:none;">Nenhum slide de abertura ainda.</div>
-
-      <h3>Fechamento</h3>
-      <div class="form-row">
-        <input type="file" id="closeUpload" accept="image/*" />
-        <input type="text" id="closeCaption" placeholder="Legenda" />
-        <button class="primary" id="closeAddBtn">Adicionar</button>
-      </div>
-      <div class="slide-grid" id="closeGrid"></div>
-      <div class="empty" id="closeEmpty" style="display:none;">Nenhum slide de fechamento ainda.</div>
-
-      <button class="danger" id="deleteTemplateBtn" style="margin-top:18px;">Apagar modelo</button>
-    </div>
-  </section>
-
-  <!-- ---------------- Padrões técnicos ---------------- -->
-  <section class="view" id="view-patterns">
-    <h2>Biblioteca de padrões técnicos</h2>
-    <div class="muted">Ex: "cristaleira" + "lateral de vidro" → "LED indireto ao fundo". O Sogno sugere isso na entrevista em vez de perguntar do zero.</div>
-    <table>
-      <thead><tr><th>Móvel</th><th>Atributo</th><th>Recomendação</th><th></th></tr></thead>
-      <tbody id="patternsBody"></tbody>
-    </table>
-    <div class="empty" id="patternsEmpty" style="display:none;">Nenhum padrão cadastrado ainda.</div>
-    <h3 id="patternFormTitle">Novo padrão</h3>
+    <h3>Abertura</h3>
     <div class="form-row">
-      <input type="text" id="patternFurniture" placeholder="Tipo de móvel (ex: cristaleira)" />
-      <input type="text" id="patternAttribute" placeholder="Atributo (ex: lateral de vidro)" />
+      <input type="file" id="openUpload" accept="image/*" />
+      <input type="text" id="openCaption" placeholder="Legenda" />
+      <button class="primary" id="openAddBtn">Salvar Abertura</button>
     </div>
-    <textarea id="patternRecommendation" rows="2" placeholder="Recomendação técnica" style="width:100%; margin-top:10px;"></textarea>
+    <div class="slide-grid" id="openGrid"></div>
+    <div class="empty" id="openEmpty" style="display:none;">Nenhum slide de abertura ainda.</div>
+
+    <h3>Fechamento</h3>
     <div class="form-row">
-      <button class="primary" id="patternSaveBtn">Salvar</button>
-      <button class="ghost" id="patternCancelBtn" style="display:none;">Cancelar edição</button>
+      <input type="file" id="closeUpload" accept="image/*" />
+      <input type="text" id="closeCaption" placeholder="Legenda" />
+      <button class="primary" id="closeAddBtn">Salvar Fechamento</button>
     </div>
-    <button class="ghost" id="patternsTrashToggle" style="margin-top:18px;">🗑 Excluídos recentes</button>
-    <table id="deletedPatternsTable" style="display:none; margin-top:10px;">
-      <thead><tr><th>Móvel</th><th>Atributo</th><th>Recomendação</th><th></th></tr></thead>
-      <tbody id="deletedPatternsBody"></tbody>
-    </table>
+    <div class="slide-grid" id="closeGrid"></div>
+    <div class="empty" id="closeEmpty" style="display:none;">Nenhum slide de fechamento ainda.</div>
   </section>
 </main>
 
@@ -354,20 +305,6 @@
     await refreshProject();
   }
 
-  function fillProjectTemplateSelect(selectedId) {
-    const select = document.getElementById("projectTemplateSelect");
-    select.innerHTML = '<option value="">— nenhum —</option>' +
-      allTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
-    select.value = selectedId || "";
-  }
-
-  document.getElementById("projectTemplateSelect").addEventListener("change", async (e) => {
-    await api(`/api/presentations/${currentProjectId}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templateId: e.target.value || null }),
-    });
-  });
-
   function renderShareState(token) {
     const urlInput = document.getElementById("shareUrlInput");
     const copyBtn = document.getElementById("shareCopyBtn");
@@ -429,7 +366,6 @@
   async function refreshProject() {
     const project = await api("/api/presentations/" + currentProjectId);
     document.getElementById("projectTitle").textContent = project.clientName;
-    fillProjectTemplateSelect(project.templateId);
     renderShareState(project.shareToken);
     const grid = document.getElementById("imgGrid");
     grid.innerHTML = "";
@@ -454,7 +390,6 @@
             </div>
             <textarea class="f-ilum-geral" placeholder="Detalhe (tipo de luminária, posição...)">${escapeHtml(style.ilumGeralDetalhe || "")}</textarea>
             <label>Iluminação nos móveis</label>
-            <select class="pattern-suggest"><option value="">— sugestões da biblioteca —</option></select>
             <textarea class="f-ilum-moveis" placeholder="Ex: LED indireto no fundo do nicho">${escapeHtml(style.ilumMoveis || "")}</textarea>
             <label>Decoração</label>
             <div class="decor-chips">${decorChipsHtml(style.decoracao)}</div>
@@ -478,9 +413,8 @@
       });
 
       const panel = card.querySelector(".style-panel");
-      card.querySelector(".toggle-style").addEventListener("click", async () => {
+      card.querySelector(".toggle-style").addEventListener("click", () => {
         panel.classList.toggle("open");
-        if (panel.classList.contains("open")) await fillPatternSuggestions(card.querySelector(".pattern-suggest"));
       });
 
       card.querySelectorAll(".tone-chip").forEach(chip => {
@@ -491,10 +425,6 @@
       });
       card.querySelectorAll(".decor-chip").forEach(chip => {
         chip.addEventListener("click", () => chip.classList.toggle("active"));
-      });
-      card.querySelector(".pattern-suggest").addEventListener("change", (e) => {
-        if (e.target.value) card.querySelector(".f-ilum-moveis").value = e.target.value;
-        e.target.value = "";
       });
 
       card.querySelector(".save-style").addEventListener("click", async () => {
@@ -521,18 +451,6 @@
       });
 
       grid.appendChild(card);
-    }
-  }
-
-  async function fillPatternSuggestions(select) {
-    if (select.dataset.loaded) return;
-    select.dataset.loaded = "1";
-    const patterns = await api("/api/presentations/patterns/list");
-    for (const p of patterns) {
-      const opt = document.createElement("option");
-      opt.value = p.recommendation;
-      opt.textContent = `${p.furnitureType} — ${p.attribute}: ${p.recommendation}`;
-      select.appendChild(opt);
     }
   }
 
@@ -670,58 +588,27 @@
     if (e.key === "ArrowLeft") document.getElementById("viewerPrev").click();
   });
 
-  // ---------------- Modelos de apresentação ----------------
+  // ---------------- Abertura / Fechamento ----------------
+  // Só existe um modelo por vez — resolvido automaticamente (cria um na
+  // primeira vez, se ainda não existir nenhum), sem precisar nomear/escolher.
   let currentTemplateId = null;
-  let allTemplates = [];
 
-  async function loadTemplates() {
-    allTemplates = await api("/api/presentations/templates");
-    const body = document.getElementById("templatesBody");
-    body.innerHTML = "";
-    document.getElementById("templatesEmpty").style.display = allTemplates.length ? "none" : "block";
-    for (const t of allTemplates) {
-      const tr = document.createElement("tr");
-      tr.className = "clickable";
-      tr.innerHTML = `<td>${escapeHtml(t.name)}</td><td>${t.slideCount}</td><td>${escapeHtml(t.createdBy)}</td><td></td>`;
-      tr.addEventListener("click", () => openTemplate(t.id));
-      body.appendChild(tr);
+  async function resolveTemplateId() {
+    if (currentTemplateId) return currentTemplateId;
+    const templates = await api("/api/presentations/templates");
+    if (templates.length) {
+      currentTemplateId = templates[0].id;
+    } else {
+      const t = await api("/api/presentations/templates", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Geral" }),
+      });
+      currentTemplateId = t.id;
     }
-    if (currentProjectId) fillProjectTemplateSelect();
+    return currentTemplateId;
   }
-
-  document.getElementById("createTemplateBtn").addEventListener("click", async () => {
-    const input = document.getElementById("newTemplateName");
-    const name = input.value.trim();
-    if (!name) return;
-    const t = await api("/api/presentations/templates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
-    input.value = "";
-    await loadTemplates();
-    openTemplate(t.id);
-  });
-
-  async function openTemplate(id) {
-    currentTemplateId = id;
-    document.getElementById("templatesList").style.display = "none";
-    document.getElementById("templateDetail").style.display = "block";
-    const t = allTemplates.find(x => x.id === id);
-    document.getElementById("templateTitle").textContent = t ? t.name : "—";
-    await loadTemplateSlides();
-  }
-
-  document.getElementById("backToTemplates").addEventListener("click", () => {
-    currentTemplateId = null;
-    document.getElementById("templateDetail").style.display = "none";
-    document.getElementById("templatesList").style.display = "block";
-    loadTemplates();
-  });
-
-  document.getElementById("deleteTemplateBtn").addEventListener("click", async () => {
-    if (!confirm("Apagar este modelo e todos os slides dele? Não tem como desfazer.")) return;
-    await api(`/api/presentations/templates/${currentTemplateId}`, { method: "DELETE" });
-    document.getElementById("backToTemplates").click();
-  });
 
   async function loadTemplateSlides() {
+    await resolveTemplateId();
     const slides = await api(`/api/presentations/templates/${currentTemplateId}/slides`);
     renderSlideGroup(slides.filter(s => !s.isClosing), "openGrid", "openEmpty");
     renderSlideGroup(slides.filter(s => s.isClosing), "closeGrid", "closeEmpty");
@@ -786,100 +673,8 @@
     loadTemplateSlides();
   }
 
-  // ---------------- Padrões técnicos ----------------
-  let editingPatternId = null;
-
-  async function loadPatterns() {
-    const rows = await api("/api/presentations/patterns/list");
-    const body = document.getElementById("patternsBody");
-    body.innerHTML = "";
-    document.getElementById("patternsEmpty").style.display = rows.length ? "none" : "block";
-    for (const p of rows) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${escapeHtml(p.furnitureType)}</td><td>${escapeHtml(p.attribute)}</td><td>${escapeHtml(p.recommendation)}</td><td></td>`;
-      const td = tr.lastElementChild;
-      const editBtn = document.createElement("button");
-      editBtn.className = "ghost"; editBtn.textContent = "Editar";
-      editBtn.addEventListener("click", () => {
-        editingPatternId = p.id;
-        document.getElementById("patternFurniture").value = p.furnitureType;
-        document.getElementById("patternAttribute").value = p.attribute;
-        document.getElementById("patternRecommendation").value = p.recommendation;
-        document.getElementById("patternFormTitle").textContent = "Editando padrão";
-        document.getElementById("patternCancelBtn").style.display = "inline-block";
-      });
-      const undoBtn = document.createElement("button");
-      undoBtn.className = "ghost"; undoBtn.textContent = "↩ Desfazer"; undoBtn.style.marginLeft = "6px";
-      undoBtn.addEventListener("click", async () => {
-        try { await api(`/api/presentations/patterns/${p.id}/undo`, { method: "POST" }); loadPatterns(); }
-        catch (e) { toast(e.message); }
-      });
-      const delBtn = document.createElement("button");
-      delBtn.className = "danger"; delBtn.textContent = "Apagar"; delBtn.style.marginLeft = "6px";
-      delBtn.addEventListener("click", async () => {
-        if (!confirm("Apagar este padrão? Fica recuperável em Excluídos recentes.")) return;
-        await api(`/api/presentations/patterns/${p.id}`, { method: "DELETE" });
-        loadPatterns();
-      });
-      td.append(editBtn, undoBtn, delBtn);
-      body.appendChild(tr);
-    }
-  }
-
-  document.getElementById("patternSaveBtn").addEventListener("click", async () => {
-    const body = {
-      furnitureType: document.getElementById("patternFurniture").value.trim(),
-      attribute: document.getElementById("patternAttribute").value.trim(),
-      recommendation: document.getElementById("patternRecommendation").value.trim(),
-    };
-    if (!body.furnitureType || !body.recommendation) { toast("Preencha o tipo de móvel e a recomendação."); return; }
-    if (editingPatternId) {
-      await api(`/api/presentations/patterns/${editingPatternId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    } else {
-      await api("/api/presentations/patterns", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    }
-    document.getElementById("patternCancelBtn").click();
-    loadPatterns();
-  });
-
-  document.getElementById("patternCancelBtn").addEventListener("click", () => {
-    editingPatternId = null;
-    document.getElementById("patternFurniture").value = "";
-    document.getElementById("patternAttribute").value = "";
-    document.getElementById("patternRecommendation").value = "";
-    document.getElementById("patternFormTitle").textContent = "Novo padrão";
-    document.getElementById("patternCancelBtn").style.display = "none";
-  });
-
-  document.getElementById("patternsTrashToggle").addEventListener("click", async () => {
-    const table = document.getElementById("deletedPatternsTable");
-    if (table.style.display === "none") {
-      const rows = await api("/api/presentations/patterns/deleted");
-      const body = document.getElementById("deletedPatternsBody");
-      body.innerHTML = "";
-      for (const r of rows) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${escapeHtml(r.furnitureType)}</td><td>${escapeHtml(r.attribute)}</td><td>${escapeHtml(r.recommendation)}</td><td></td>`;
-        const restoreBtn = document.createElement("button");
-        restoreBtn.className = "ghost"; restoreBtn.textContent = "Restaurar";
-        restoreBtn.addEventListener("click", async () => {
-          await api(`/api/presentations/patterns/deleted/${r.logId}/restore`, { method: "POST" });
-          document.getElementById("patternsTrashToggle").click();
-          document.getElementById("patternsTrashToggle").click();
-          loadPatterns();
-        });
-        tr.lastElementChild.appendChild(restoreBtn);
-        body.appendChild(tr);
-      }
-      table.style.display = "table";
-    } else {
-      table.style.display = "none";
-    }
-  });
-
   loadProjects();
-  loadTemplates();
-  loadPatterns();
+  loadTemplateSlides();
 </script>
 </body>
 </html>
