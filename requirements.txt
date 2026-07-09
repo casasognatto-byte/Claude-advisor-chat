@@ -12,3 +12,4 @@ python-multipart>=0.0.9  # necessário pro FastAPI aceitar upload de imagem (Upl
 boto3>=1.34  # cliente S3 usado pra falar com Cloudflare R2 (Biblioteca de Apresentações)
 openpyxl>=3.1  # lê a planilha .xlsx de cores Simonetto/Stimmo (importação no painel admin)
 Pillow>=10.3  # monta o PDF do deck (abertura + ambientes + fechamento) como imagens
+PyMuPDF>=1.24  # rasteriza PDF de abertura/fechamento (1 pagina = 1 slide)

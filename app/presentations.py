@@ -19,6 +19,7 @@ Mesma regra de sempre: imports de `app.main` ficam dentro das funções para
 evitar import circular. Arquivos ficam em `app.storage` (R2 ou disco local).
 """
 
+import asyncio
 import io
 import json
 import secrets
@@ -72,6 +73,26 @@ ROOM_LABELS = {
 }
 
 _MIME_OK = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+_PDF_MIME = "application/pdf"
+
+
+def _rasterize_pdf(data: bytes, dpi: int = 120) -> list[bytes]:
+    """Abertura/Fechamento também podem ser enviados como PDF (ex: deck
+    institucional já pronto da equipe) — cada página vira um slide (PNG),
+    na mesma ordem do PDF, reaproveitando o modelo de slides já existente."""
+    import fitz  # PyMuPDF
+
+    pages = []
+    doc = fitz.open(stream=data, filetype="pdf")
+    try:
+        zoom = dpi / 72
+        mat = fitz.Matrix(zoom, zoom)
+        for page in doc:
+            pix = page.get_pixmap(matrix=mat)
+            pages.append(pix.tobytes("png"))
+    finally:
+        doc.close()
+    return pages
 
 
 # --- Banco de dados ----------------------------------------------------------
@@ -423,21 +444,44 @@ async def add_template_slide(
     user = require_user(request)
     _require_db()
     mime = image.content_type or "image/jpeg"
-    if mime not in _MIME_OK:
-        raise HTTPException(400, "Formato de imagem não suportado.")
-    image_bytes = await image.read()
-    if not image_bytes:
-        raise HTTPException(400, "Imagem vazia ou não enviada.")
+    file_bytes = await image.read()
+    if not file_bytes:
+        raise HTTPException(400, "Arquivo vazio ou não enviado.")
+
+    if mime == _PDF_MIME:
+        try:
+            pages = await asyncio.to_thread(_rasterize_pdf, file_bytes)
+        except Exception:
+            raise HTTPException(400, "Não foi possível ler o PDF.")
+        if not pages:
+            raise HTTPException(400, "PDF sem páginas.")
+        page_files = [(p, "image/png") for p in pages]
+    elif mime in _MIME_OK:
+        page_files = [(file_bytes, mime)]
+    else:
+        raise HTTPException(400, "Formato não suportado (use imagem ou PDF).")
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1 FROM presentation_templates WHERE id = %s", (template_id,))
         if not cur.fetchone():
             raise HTTPException(404, "Modelo não encontrado.")
 
-    slide_id = "inst" + secrets.token_hex(8)
-    ext = mime.split("/", 1)[1]
-    storage_key = f"institutional/{slide_id}.{ext}"
-    storage.put(storage_key, image_bytes, mime)
+    slide_ids = ["inst" + secrets.token_hex(8) for _ in page_files]
+    storage_keys = []
+    for slide_id, (_data, page_mime) in zip(slide_ids, page_files):
+        ext = page_mime.split("/", 1)[1]
+        storage_keys.append(f"institutional/{slide_id}.{ext}")
+
+    sem = asyncio.Semaphore(6)
+
+    async def _put(key: str, data: bytes, put_mime: str):
+        async with sem:
+            await asyncio.to_thread(storage.put, key, data, put_mime)
+
+    await asyncio.gather(*(
+        _put(key, data, put_mime)
+        for key, (data, put_mime) in zip(storage_keys, page_files)
+    ))
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
@@ -446,13 +490,15 @@ async def add_template_slide(
             (template_id, is_closing),
         )
         next_order = cur.fetchone()[0]
-        cur.execute(
-            "INSERT INTO institutional_slides "
-            "(id, storage_key, mime, caption, sort_order, is_closing, created_by, template_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (slide_id, storage_key, mime, caption, next_order, is_closing, user["username"], template_id),
-        )
-    return {"id": slide_id, "sortOrder": next_order, "isClosing": is_closing}
+        for i, (slide_id, storage_key, (_data, page_mime)) in enumerate(zip(slide_ids, storage_keys, page_files)):
+            slide_caption = caption if len(page_files) == 1 else ""
+            cur.execute(
+                "INSERT INTO institutional_slides "
+                "(id, storage_key, mime, caption, sort_order, is_closing, created_by, template_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (slide_id, storage_key, page_mime, slide_caption, next_order + i, is_closing, user["username"], template_id),
+            )
+    return {"ids": slide_ids, "count": len(slide_ids), "isClosing": is_closing}
 
 
 @router.get("/templates/{template_id}/slides/{slide_id}/file")

@@ -180,19 +180,21 @@
 
     <h3>Abertura</h3>
     <div class="form-row">
-      <input type="file" id="openUpload" accept="image/*" />
+      <input type="file" id="openUpload" accept="image/*,application/pdf" />
       <input type="text" id="openCaption" placeholder="Legenda" />
       <button class="primary" id="openAddBtn">Salvar Abertura</button>
     </div>
+    <div class="muted" style="font-size:11.5px; margin-top:4px;">Aceita imagem ou PDF — PDF com várias páginas vira uma sequência de slides, na ordem.</div>
     <div class="slide-grid" id="openGrid"></div>
     <div class="empty" id="openEmpty" style="display:none;">Nenhum slide de abertura ainda.</div>
 
     <h3>Fechamento</h3>
     <div class="form-row">
-      <input type="file" id="closeUpload" accept="image/*" />
+      <input type="file" id="closeUpload" accept="image/*,application/pdf" />
       <input type="text" id="closeCaption" placeholder="Legenda" />
       <button class="primary" id="closeAddBtn">Salvar Fechamento</button>
     </div>
+    <div class="muted" style="font-size:11.5px; margin-top:4px;">Aceita imagem ou PDF — PDF com várias páginas vira uma sequência de slides, na ordem.</div>
     <div class="slide-grid" id="closeGrid"></div>
     <div class="empty" id="closeEmpty" style="display:none;">Nenhum slide de fechamento ainda.</div>
   </section>
@@ -663,14 +665,30 @@
   async function addTemplateSlide(isClosing) {
     const fileInput = document.getElementById(isClosing ? "closeUpload" : "openUpload");
     const captionInput = document.getElementById(isClosing ? "closeCaption" : "openCaption");
-    if (!fileInput.files.length) { toast("Escolha uma imagem."); return; }
+    const btn = document.getElementById(isClosing ? "closeAddBtn" : "openAddBtn");
+    if (!fileInput.files.length) { toast("Escolha uma imagem ou um PDF."); return; }
+    const file = fileInput.files[0];
+    const isPdf = file.type === "application/pdf";
     const fd = new FormData();
-    fd.append("image", fileInput.files[0]);
+    fd.append("image", file);
     fd.append("caption", captionInput.value.trim());
     fd.append("is_closing", isClosing ? "true" : "false");
-    await fetch(`/api/presentations/templates/${currentTemplateId}/slides`, { method: "POST", body: fd });
-    fileInput.value = ""; captionInput.value = "";
-    loadTemplateSlides();
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = isPdf ? "Enviando PDF… pode levar um pouco" : "Enviando…";
+    try {
+      const res = await fetch(`/api/presentations/templates/${currentTemplateId}/slides`, { method: "POST", body: fd });
+      if (!res.ok) { toast("Não foi possível enviar o arquivo."); return; }
+      const data = await res.json();
+      fileInput.value = ""; captionInput.value = "";
+      toast(data.count > 1 ? `${data.count} slides adicionados.` : "Slide adicionado.");
+      loadTemplateSlides();
+    } catch (_) {
+      toast("Erro de conexão.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
   }
 
   loadProjects();
