@@ -17,11 +17,20 @@
   .new-btn { margin: 14px; padding: 12px; background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: 'Inter'; font-weight: 600; font-size: 12.5px; letter-spacing: .03em; display: flex; align-items: center; justify-content: center; gap: 8px; transition: box-shadow .2s ease, background .15s ease; }
   .new-btn:hover { background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-border), 0 8px 28px var(--accent-dim); }
   .owner-filter { margin: 0 14px 10px; }
+  .conv-list-tools { display: none; margin: 0 14px 8px; gap: 6px; }
+  body.conv-select-mode .conv-list-tools { display: flex; }
+  .sel-toggle { flex: 1; background: var(--glass-bg-soft); color: var(--muted); border: 1px solid var(--glass-border); border-radius: 8px; padding: 6px 8px; font-size: 11px; cursor: pointer; font-family: inherit; }
+  .sel-toggle:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent-soft); }
+  .sel-toggle:disabled { opacity: .5; cursor: default; }
+  .sel-toggle.danger:not(:disabled):hover { color: var(--danger); border-color: rgba(224,121,107,.35); }
   .conv-list { flex: 1; overflow-y: auto; padding: 4px 10px 10px; }
   .conv-section-label { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 10px 6px 6px; }
   .conv { display: flex; align-items: center; gap: 8px; padding: 10px 11px; margin-bottom: 3px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-dim); font-size: 13.5px; border: 1px solid transparent; }
   .conv:hover { background: var(--glass-bg-soft); color: var(--text); }
   .conv.active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--text); }
+  .conv .sel-check { flex: none; display: none; accent-color: var(--accent); }
+  body.conv-select-mode .conv .sel-check { display: inline-block; }
+  body.conv-select-mode .conv .del { display: none; }
   .conv .title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .conv .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
   .conv:hover .del { opacity: .8; }
@@ -67,9 +76,9 @@
   #send { background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); padding: 11px 20px; font-weight: 600; font-size: 12.5px; letter-spacing: .03em; cursor: pointer; }
   #send:hover:not(:disabled) { background: var(--accent-soft); }
   #send:disabled { opacity: .5; cursor: default; }
-  .icon-btn { flex: none; background: var(--glass-bg-soft); color: var(--text); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); width: 42px; height: 42px; font-size: 17px; cursor: pointer; }
-  .icon-btn:hover:not(:disabled) { border-color: var(--accent-border); }
-  .icon-btn:disabled { opacity: .5; cursor: default; }
+  .action-chip { flex: none; display: inline-flex; align-items: center; gap: 7px; background: var(--glass-bg-soft); color: var(--text); border: 1px solid var(--glass-border); border-radius: 20px; padding: 9px 15px; font-size: 12.5px; font-family: inherit; cursor: pointer; }
+  .action-chip:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent-soft); }
+  .action-chip:disabled { opacity: .5; cursor: default; }
   .hint { max-width: 760px; margin: 9px auto 0; font-size: 10.5px; color: var(--muted); text-align: center; }
 
   .staged-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px 10px; }
@@ -126,6 +135,8 @@
   .modal-title { font-family: 'Benjamin'; font-size: 16px; }
   .modal-close { background: transparent; border: none; color: var(--muted); font-size: 16px; cursor: pointer; }
   .modal-close:hover { color: var(--accent); }
+  .modal-back { background: transparent; border: none; color: var(--muted); font-size: 12.5px; font-family: inherit; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .modal-back:hover { color: var(--accent-soft); }
   .prompts-body { display: flex; gap: 0; flex: 1; min-height: 0; }
   .prompts-list-col { width: 280px; flex: none; border-right: 1px solid var(--glass-border); padding: 16px; display: flex; flex-direction: column; min-height: 0; }
   .prompts-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -212,14 +223,18 @@
       <div class="tagline">CASA SOGNATTO</div>
     </div>
     <button class="new-btn" id="new">＋ Novo render</button>
+    <a class="new-btn" id="presentationsLink" href="/apresentacoes" style="text-decoration:none;">Apresentações</a>
     <select class="owner-filter" id="ownerFilter" style="display:none;"></select>
+    <div class="conv-list-tools" id="convListTools">
+      <button class="sel-toggle" id="convSelectAllBtn">Selecionar todas</button>
+      <button class="sel-toggle danger" id="convDeleteSelectedBtn" disabled>Excluir selecionadas</button>
+    </div>
     <div class="conv-list" id="convList"></div>
     <div class="sb-footer">
       <span class="user" id="userLabel">—</span>
       <div class="actions">
+        <button id="convSelectModeBtn">Selecionar</button>
         <button id="logout">Sair</button>
-        <a id="presentationsLink" href="/apresentacoes">Apresentações</a>
-        <a id="adminLink" href="/admin" style="display:none;">Painel</a>
       </div>
     </div>
   </aside>
@@ -244,13 +259,14 @@
     <footer>
       <div class="composer-card">
         <div class="staged-row" id="stagedRow" style="display:none;"></div>
-        <div class="quick-actions" id="quickActions"></div>
+        <div class="quick-actions" id="quickActions">
+          <button type="button" class="action-chip" id="imageBtn" title="Anexar planta/volumetria pra gerar render">📎 Anexar arquivo</button>
+          <button type="button" class="action-chip" id="colorsBtn" title="Cores Simonetto/Stimmo">🎨 Cores Simonetto/Stimmo</button>
+          <button type="button" class="action-chip" id="promptsBtn" title="Biblioteca de prompts">📝 Biblioteca de Prompts</button>
+        </div>
         <div class="composer">
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
-          <button class="icon-btn" id="imageBtn" title="Anexar planta/volumetria pra gerar render">🖼️</button>
-          <button class="icon-btn" id="colorsBtn" title="Cores Simonetto/Stimmo">🎨</button>
-          <button class="icon-btn" id="promptsBtn" title="Biblioteca de prompts">📝</button>
           <button id="generateBtn" style="display:none;">Gerar</button>
           <button id="send">Enviar</button>
         </div>
@@ -278,6 +294,7 @@
   <div class="modal-overlay" id="promptsOverlay" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
+        <button class="modal-back" id="promptsBack">← Voltar</button>
         <div class="modal-title">Biblioteca de prompts</div>
         <button class="modal-close" id="promptsClose">✕</button>
       </div>
@@ -309,6 +326,7 @@
   <div class="modal-overlay" id="colorsOverlay" style="display:none;">
     <div class="modal-card">
       <div class="modal-header">
+        <button class="modal-back" id="colorsBack">← Voltar</button>
         <div class="modal-title">Cores</div>
         <button class="modal-close" id="colorsClose">✕</button>
       </div>
@@ -386,6 +404,13 @@
       if (this.mode === "remote") { await fetch("/api/conversations/" + id, { method: "DELETE" }); }
       else { this.lSave(this.lAll().filter(x => x.id !== id)); }
     },
+    async bulkRemove(ids) {
+      if (this.mode === "remote") {
+        await fetch("/api/conversations/bulk-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      } else {
+        const set = new Set(ids); this.lSave(this.lAll().filter(x => !set.has(x.id)));
+      }
+    },
   };
 
   // ---------- Estado ----------
@@ -393,6 +418,8 @@
   let activeId = null;
   let currentUser = "anon";
   let currentRole = null;
+  let convSelectMode = false;
+  let convSelectedIds = new Set();
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -427,16 +454,44 @@
     for (const c of conversations) {
       const row = document.createElement("div");
       row.className = "conv" + (c.id === activeId ? " active" : "");
+      const check = document.createElement("input");
+      check.type = "checkbox"; check.className = "sel-check"; check.title = "Selecionar conversa";
+      check.checked = convSelectedIds.has(c.id);
+      check.addEventListener("click", (e) => { e.stopPropagation(); toggleConvSelected(c.id, check.checked); });
       const t = document.createElement("div");
       t.className = "title"; t.textContent = c.title || "Nova conversa"; t.title = "Clique duplo para renomear";
       const del = document.createElement("button");
       del.className = "del"; del.innerHTML = "🗑"; del.title = "Excluir conversa";
-      row.appendChild(t); row.appendChild(del);
-      row.addEventListener("click", () => selectConv(c.id));
+      row.appendChild(check); row.appendChild(t); row.appendChild(del);
+      row.addEventListener("click", () => {
+        if (convSelectMode) { check.checked = !check.checked; toggleConvSelected(c.id, check.checked); return; }
+        selectConv(c.id);
+      });
       t.addEventListener("dblclick", (e) => { e.stopPropagation(); renameConv(c.id); });
       del.addEventListener("click", (e) => { e.stopPropagation(); deleteConv(c.id); });
       convListEl.appendChild(row);
     }
+  }
+
+  // ---------- Seleção múltipla de conversas (exclusão em lote) ----------
+  function toggleConvSelected(id, checked) {
+    if (checked) convSelectedIds.add(id); else convSelectedIds.delete(id);
+    updateConvSelectUI();
+  }
+  function updateConvSelectUI() {
+    const delBtn = document.getElementById("convDeleteSelectedBtn");
+    delBtn.disabled = convSelectedIds.size === 0;
+    delBtn.textContent = convSelectedIds.size ? `Excluir selecionadas (${convSelectedIds.size})` : "Excluir selecionadas";
+    document.getElementById("convSelectAllBtn").textContent =
+      convSelectedIds.size && convSelectedIds.size === conversations.length ? "Desmarcar todas" : "Selecionar todas";
+  }
+  function setConvSelectMode(on) {
+    convSelectMode = on;
+    document.body.classList.toggle("conv-select-mode", on);
+    document.getElementById("convSelectModeBtn").textContent = on ? "Cancelar seleção" : "Selecionar";
+    if (!on) convSelectedIds.clear();
+    updateConvSelectUI();
+    renderList();
   }
   function renderItem(item) {
     const emptyPlaceholder = chat.querySelector(".empty");
@@ -677,30 +732,6 @@
     }
   }
 
-  // ---------- Chips de ação rápida (prompts favoritados por essa pessoa) ----------
-  // Substituem os 4 chips de texto fixo que existiam antes — agora vêm da
-  // Biblioteca de Prompts (📝), então cada arquiteta escolhe/edita os
-  // próprios atalhos em vez de um conjunto fixo igual pra todo mundo.
-  async function loadQuickActions() {
-    const wrap = document.getElementById("quickActions");
-    let favs = [];
-    try { favs = await fetch("/api/prompts/favorites").then(r => r.ok ? r.json() : []); } catch (_) {}
-    wrap.innerHTML = "";
-    for (const f of favs) {
-      const chip = document.createElement("span");
-      chip.className = "chip";
-      chip.textContent = f.name;
-      chip.title = f.content;
-      chip.addEventListener("click", () => {
-        input.value = input.value ? input.value + "\n" + f.content : f.content;
-        autosize();
-        input.focus();
-      });
-      wrap.appendChild(chip);
-    }
-  }
-  loadQuickActions();
-
   // ---------- Arquivos "em espera" (anexa, ajusta o prompt, só gera ao clicar) ----------
   let stagedKind = null;   // sempre "image" — vídeo foi removido em 08/07/2026
   let stagedFiles = [];
@@ -817,7 +848,6 @@
   let promptsTab = "predefined"; // "predefined" | "personal"
   let promptsMode = "list";      // "list" | "trash"
   let promptsSelected = null;    // { kind: "predefined"|"personal", id, name, category, content, owner? }
-  let promptsFavoriteKeys = new Set(); // "kind:id" — vira chip de atalho no composer
 
   const promptsOverlay = document.getElementById("promptsOverlay");
   const promptsListEl = document.getElementById("promptsList");
@@ -850,10 +880,6 @@
     if (!promptsUsers.length) {
       try { promptsUsers = await fetch("/api/users").then(r => r.ok ? r.json() : []); } catch (_) {}
     }
-    try {
-      const favs = await fetch("/api/prompts/favorites").then(r => r.ok ? r.json() : []);
-      promptsFavoriteKeys = new Set(favs.map(f => f.kind + ":" + f.id));
-    } catch (_) {}
     clearPromptForm();
     await refreshPromptsList();
   }
@@ -1002,13 +1028,6 @@
 
     addBtn("Usar este prompt", "primary", useSelectedPrompt);
 
-    if (promptsSelected && promptsSelected.id) {
-      const favKey = promptsSelected.kind + ":" + promptsSelected.id;
-      const isFav = promptsFavoriteKeys.has(favKey);
-      addBtn(isFav ? "★ Nos atalhos rápidos" : "☆ Adicionar aos atalhos rápidos", "",
-        () => toggleFavorite(promptsSelected.kind, promptsSelected.id));
-    }
-
     if (isOwnPersonal) {
       addBtn("Salvar alterações", "", () => savePersonalPrompt(promptsSelected.id));
     } else {
@@ -1025,24 +1044,6 @@
     }
     if (isOwnPersonal) addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
     if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
-  }
-
-  async function toggleFavorite(kind, id) {
-    const key = kind + ":" + id;
-    try {
-      if (promptsFavoriteKeys.has(key)) {
-        await fetch(`/api/prompts/favorites/${kind}/${id}`, { method: "DELETE" });
-        promptsFavoriteKeys.delete(key);
-      } else {
-        await fetch("/api/prompts/favorites", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ kind, promptId: id }),
-        });
-        promptsFavoriteKeys.add(key);
-      }
-      renderPromptsActions();
-      await loadQuickActions();
-    } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
   }
 
   async function undoPrompt(kind, id) {
@@ -1142,6 +1143,7 @@
 
   document.getElementById("promptsBtn").addEventListener("click", openPrompts);
   document.getElementById("promptsClose").addEventListener("click", closePrompts);
+  document.getElementById("promptsBack").addEventListener("click", closePrompts);
   document.getElementById("tabPredefined").addEventListener("click", () => switchPromptsTab("predefined"));
   document.getElementById("tabPersonal").addEventListener("click", () => switchPromptsTab("personal"));
   document.getElementById("promptsNewBtn").addEventListener("click", clearPromptForm);
@@ -1246,6 +1248,7 @@
 
   document.getElementById("colorsBtn").addEventListener("click", openColors);
   document.getElementById("colorsClose").addEventListener("click", closeColors);
+  document.getElementById("colorsBack").addEventListener("click", closeColors);
   document.getElementById("tabSimonetto").addEventListener("click", () => switchColorsTab("simonetto"));
   document.getElementById("tabStimmo").addEventListener("click", () => switchColorsTab("stimmo"));
 
@@ -1310,7 +1313,6 @@
     currentUser = user; currentRole = role;
     document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
     if (role === "diretor") {
-      document.getElementById("adminLink").style.display = "inline-block";
       document.getElementById("adminLinkTop").style.display = "inline-block";
     }
     conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
@@ -1331,6 +1333,28 @@
   sendBtn.addEventListener("click", send);
   document.getElementById("new").addEventListener("click", () => { newConv(); if (window.innerWidth < 769) document.body.classList.add("collapsed"); });
   document.getElementById("logout").addEventListener("click", logout);
+  document.getElementById("convSelectModeBtn").addEventListener("click", () => setConvSelectMode(!convSelectMode));
+  document.getElementById("convSelectAllBtn").addEventListener("click", () => {
+    if (convSelectedIds.size === conversations.length) convSelectedIds.clear();
+    else conversations.forEach(c => convSelectedIds.add(c.id));
+    updateConvSelectUI();
+    renderList();
+  });
+  document.getElementById("convDeleteSelectedBtn").addEventListener("click", async () => {
+    const ids = Array.from(convSelectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Excluir ${ids.length} conversa(s) selecionada(s)? Isso não pode ser desfeito.`)) return;
+    await Store.bulkRemove(ids);
+    const deleted = new Set(ids);
+    conversations = conversations.filter(c => !deleted.has(c.id));
+    const activeWasDeleted = activeId && deleted.has(activeId);
+    setConvSelectMode(false);
+    if (activeWasDeleted) {
+      if (!conversations.length) newConv(); else await selectConv(conversations[0].id);
+    } else {
+      renderList();
+    }
+  });
   document.getElementById("toggle").addEventListener("click", () => document.body.classList.toggle("collapsed"));
   init();
 </script>

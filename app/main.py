@@ -387,6 +387,10 @@ class ConvUpdate(BaseModel):
     data: dict | None = None
 
 
+class ConvBulkDelete(BaseModel):
+    ids: list[str]
+
+
 # --- Sessão / autenticação --------------------------------------------------
 def _get_user_by_email(email: str) -> dict | None:
     if not DB_ENABLED or not email:
@@ -769,6 +773,21 @@ def delete_conversation(cid: str, request: Request):
         cur.execute("DELETE FROM conversations WHERE id = %s", (cid,))
     _log_activity(user["username"], "conversa_deletada", title)
     return {"ok": True}
+
+
+@app.post("/api/conversations/bulk-delete")
+def bulk_delete_own_conversations(body: ConvBulkDelete, request: Request):
+    user = require_user(request)
+    _require_db()
+    if not body.ids:
+        return {"deleted": 0}
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, title FROM conversations WHERE id = ANY(%s)", (body.ids,))
+        rows = cur.fetchall()
+        cur.execute("DELETE FROM conversations WHERE id = ANY(%s)", (body.ids,))
+    for _cid, title in rows:
+        _log_activity(user["username"], "conversa_deletada", title)
+    return {"deleted": len(rows)}
 
 
 # --- Rota principal do chat -------------------------------------------------
