@@ -30,7 +30,7 @@ services:
       - key: EMAIL_FROM
         value: Casa Sognatto <naoresponda@casasognatto.com.br>
       - key: SMTP_HOST
-        value: smtp.kinghost.net
+        value: smtpi.kinghost.net   # "i" de internacional — o Render roda fora do Brasil, smtp.kinghost.net (sem i) e so pra conexao domestica
       - key: SMTP_PORT
         value: "465"
       - key: SMTP_USER
