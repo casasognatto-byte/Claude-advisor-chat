@@ -42,6 +42,9 @@
   .client-row .chevron { flex: none; width: 12px; text-align: center; color: var(--muted); font-size: 10px; transition: transform .15s ease; }
   .client-row.expanded .chevron { transform: rotate(90deg); }
   .client-row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .client-row .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; }
+  .client-row:hover .del { opacity: .8; }
+  .client-row .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
   .env-list { padding-left: 16px; margin-bottom: 4px; }
   .env-row { display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-bottom: 2px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-dim); font-size: 13px; border: 1px solid transparent; }
   .env-row:hover { background: var(--glass-bg-soft); color: var(--text); }
@@ -527,12 +530,13 @@
       const expanded = expandedClients.has(client.id);
       const cRow = document.createElement("div");
       cRow.className = "client-row" + (expanded ? " expanded" : "");
-      cRow.innerHTML = '<span class="chevron">▸</span><span class="name"></span>';
+      cRow.innerHTML = '<span class="chevron">▸</span><span class="name"></span><button class="del" title="Apagar cliente">🗑</button>';
       cRow.querySelector(".name").textContent = client.clientName;
       cRow.addEventListener("click", () => {
         if (expanded) expandedClients.delete(client.id); else expandedClients.add(client.id);
         renderList();
       });
+      cRow.querySelector(".del").addEventListener("click", (e) => { e.stopPropagation(); deleteClient(client.id, client.clientName); });
       convListEl.appendChild(cRow);
       if (!expanded) continue;
 
@@ -595,6 +599,13 @@
     try { treeData = await fetch("/api/presentations/tree").then((r) => (r.ok ? r.json() : [])); }
     catch (_) { treeData = []; }
     renderList();
+  }
+
+  async function deleteClient(projectId, clientName) {
+    if (!confirm(`Apagar o cliente "${clientName}" e todos os ambientes/imagens ligados a ele? As conversas de chat não são apagadas, só soltam da pasta. Isso não pode ser desfeito.`)) return;
+    try { await fetch(`/api/presentations/${projectId}`, { method: "DELETE" }); } catch (_) {}
+    expandedClients.delete(projectId);
+    await loadTree();
   }
 
   async function openEnvironment(envId) {
