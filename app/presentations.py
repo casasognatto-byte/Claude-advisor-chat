@@ -1249,6 +1249,29 @@ def _open_slide_image(data: bytes):
     return img.convert("RGB")
 
 
+_A4_DPI = 150
+_A4_PORTRAIT_PX = (1240, 1754)  # 210x297mm a 150dpi — bate com resolution=150 no save()
+
+
+def _fit_to_a4(img):
+    """Encaixa a imagem numa folha A4 (retrato ou paisagem, o que sobrar
+    menos espaço em branco pra ela), sem distorcer — reduz mantendo a
+    proporção e centraliza, preenchendo o resto com branco. O PDF final
+    grava resolution=_A4_DPI, então cada página sai fisicamente A4 de
+    verdade (não só um retângulo do mesmo tamanho em pixels)."""
+    from PIL import Image
+
+    w, h = img.size
+    landscape = w >= h
+    page_w, page_h = (_A4_PORTRAIT_PX[1], _A4_PORTRAIT_PX[0]) if landscape else _A4_PORTRAIT_PX
+    scale = min(page_w / w, page_h / h)
+    new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
+    resized = img.resize((new_w, new_h), Image.LANCZOS)
+    canvas = Image.new("RGB", (page_w, page_h), "white")
+    canvas.paste(resized, ((page_w - new_w) // 2, (page_h - new_h) // 2))
+    return canvas
+
+
 @router.get("/{project_id}/deck.pdf")
 def get_deck_pdf(project_id: str, request: Request):
     """Exporta o deck (abertura + ambientes + fechamento) como PDF de imagens
@@ -1294,12 +1317,12 @@ def get_deck_pdf(project_id: str, request: Request):
     for storage_key in ordered_keys:
         data = storage.get(storage_key)
         if data is not None:
-            images.append(_open_slide_image(data))
+            images.append(_fit_to_a4(_open_slide_image(data)))
     if not images:
         raise HTTPException(400, "Nenhum arquivo de slide disponível para exportar.")
 
     buf = io.BytesIO()
-    images[0].save(buf, format="PDF", save_all=True, append_images=images[1:])
+    images[0].save(buf, format="PDF", save_all=True, append_images=images[1:], resolution=_A4_DPI)
 
     client_name = project[0] or "apresentacao"
     safe_name = "".join(c for c in client_name if c.isalnum() or c in " -_").strip() or "apresentacao"
