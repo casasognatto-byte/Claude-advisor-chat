@@ -1100,15 +1100,19 @@
     if (!entry.files.length) return;
     const files = entry.files;
     stagedByConv.delete(activeId); renderStagedRow();
-    for (const file of files) await startImageJob(file);
+    // Le o prompt uma unica vez (era lido de novo a cada arquivo, e como o
+    // campo era limpo logo em seguida, só a 1ª imagem recebia a instrução —
+    // as demais geravam sem prompt nenhum). Dispara todas em paralelo em vez
+    // de esperar uma terminar pra começar a próxima.
+    const prompt = input.value.trim();
+    input.value = ""; autosize();
+    await Promise.all(files.map((file) => startImageJob(file, prompt)));
   });
 
   // ---------- Geração de imagem (ícone no composer) ----------
-  async function startImageJob(file) {
+  async function startImageJob(file, prompt) {
     let c = active(); if (!c) { newConv(); c = active(); }
     await ensureData(c);
-    const prompt = input.value.trim();
-    input.value = ""; autosize();
 
     const item = { type: "image", jobId: null, status: "queued" };
     c.data.view.push(item);
