@@ -62,7 +62,14 @@
 
   /* --- Projeto: grid de imagens --- */
   .img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-top: 14px; }
+  .env-section, .env-section-static { margin-top: 20px; }
+  .env-section:first-child, .env-section-static:first-child { margin-top: 4px; }
+  .env-section.dragging { opacity: .4; }
+  .env-section-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--green-800); border: 1px solid var(--border); cursor: grab; }
+  .env-section-header .drag-handle { color: var(--muted); font-size: 13px; }
+  .env-section-header .name { font-family: 'Sackers'; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
   .img-card { background: var(--green-800); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .img-card.dragging { opacity: .4; }
   .img-card img { width: 100%; height: 150px; object-fit: cover; display: block; background: var(--green-700); }
   .img-card .card-body { padding: 10px 12px; }
   .img-card .room-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -371,11 +378,103 @@
     renderShareState(project.shareToken);
     const grid = document.getElementById("imgGrid");
     grid.innerHTML = "";
+
+    const environments = project.environments || [];
+    if (!environments.length) {
+      // Projeto sem ambientes (todos os antigos, upload direto) — grade
+      // única de sempre, sem nenhuma mudança de comportamento.
+      for (const img of project.images) grid.appendChild(buildImageCard(img));
+      return;
+    }
+
+    // Projeto com ambientes (Cliente > Ambiente, criado pelo chat principal)
+    // — uma seção por ambiente, na ordem escolhida por arrastar, com as
+    // imagens de cada um também arrastáveis pra reordenar dentro dele.
+    const byEnv = new Map();
     for (const img of project.images) {
+      const key = img.environmentId || "__none__";
+      if (!byEnv.has(key)) byEnv.set(key, []);
+      byEnv.get(key).push(img);
+    }
+    const sectionsWrap = document.createElement("div");
+    for (const env of environments) {
+      const section = document.createElement("div");
+      section.className = "env-section";
+      section.dataset.id = env.id;
+      const header = document.createElement("div");
+      header.className = "env-section-header";
+      header.innerHTML = `<span class="drag-handle">⠿</span><span class="name"></span>`;
+      header.querySelector(".name").textContent = env.name;
+      section.appendChild(header);
+      const envGrid = document.createElement("div");
+      envGrid.className = "img-grid";
+      for (const img of byEnv.get(env.id) || []) envGrid.appendChild(buildImageCard(img));
+      section.appendChild(envGrid);
+      sectionsWrap.appendChild(section);
+      makeDragReorderable(envGrid, ".img-card", (orderedIds) => reorderEnvironmentImages(env.id, orderedIds));
+    }
+    const loose = byEnv.get("__none__") || [];
+    if (loose.length) {
+      // Classe diferente de propósito — essa seção não corresponde a um
+      // client_environments de verdade, então não pode entrar no arrastar-
+      // e-soltar de reordenar ambientes (bagunçaria a ordem dos outros).
+      const section = document.createElement("div");
+      section.className = "env-section-static";
+      const header = document.createElement("div");
+      header.className = "env-section-header";
+      header.innerHTML = `<span class="name">Sem ambiente</span>`;
+      section.appendChild(header);
+      const envGrid = document.createElement("div");
+      envGrid.className = "img-grid";
+      for (const img of loose) envGrid.appendChild(buildImageCard(img));
+      section.appendChild(envGrid);
+      sectionsWrap.appendChild(section);
+    }
+    grid.appendChild(sectionsWrap);
+    makeDragReorderable(sectionsWrap, ".env-section", (orderedIds) => reorderEnvironments(orderedIds));
+  }
+
+  function makeDragReorderable(container, itemSelector, onReorder) {
+    let dragEl = null;
+    container.querySelectorAll(itemSelector).forEach((el) => {
+      el.draggable = true;
+      el.addEventListener("dragstart", () => { dragEl = el; setTimeout(() => el.classList.add("dragging"), 0); });
+      el.addEventListener("dragend", () => { el.classList.remove("dragging"); dragEl = null; });
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dragEl || dragEl === el) return;
+        const rect = el.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        container.insertBefore(dragEl, before ? el : el.nextSibling);
+      });
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const ids = Array.from(container.querySelectorAll(itemSelector)).map((x) => x.dataset.id);
+        onReorder(ids);
+      });
+    });
+  }
+
+  async function reorderEnvironments(orderedIds) {
+    await api(`/api/presentations/${currentProjectId}/environments/reorder`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderedIds }),
+    });
+    refreshProject();
+  }
+
+  async function reorderEnvironmentImages(envId, orderedIds) {
+    await api(`/api/presentations/environments/${envId}/images/reorder`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderedIds }),
+    });
+    refreshProject();
+  }
+
+  function buildImageCard(img) {
       const style = img.style || {};
       const card = document.createElement("div");
       card.className = "img-card";
       card.dataset.imageId = img.id;
+      card.dataset.id = img.id;
       card.innerHTML = `
         <img src="/api/presentations/${currentProjectId}/images/${img.id}/file" loading="lazy" />
         <div class="card-body">
@@ -452,8 +551,7 @@
         refreshProject();
       });
 
-      grid.appendChild(card);
-    }
+      return card;
   }
 
   // ---------------- Biblioteca de referências entre projetos ----------------
