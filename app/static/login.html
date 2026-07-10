@@ -62,6 +62,19 @@
     padding: 11px 12px; font: inherit; font-size: 15px;
   }
   input:focus { outline: none; border-color: var(--gold); }
+  .pw-field { position: relative; }
+  .pw-field input { width: 100%; padding-right: 40px; }
+  .pw-toggle {
+    position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+    width: auto; margin: 0; padding: 6px; background: none; border: none;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); cursor: pointer;
+  }
+  .pw-toggle:hover { background: none; color: var(--gold); }
+  .pw-toggle svg { width: 18px; height: 18px; display: block; }
+  .pw-toggle .icon-eye-off { display: none; }
+  .pw-toggle.active .icon-eye { display: none; }
+  .pw-toggle.active .icon-eye-off { display: block; }
   button {
     width: 100%; margin-top: 22px; padding: 12px;
     background: var(--gold); color: #1c1408; border: none;
@@ -93,7 +106,13 @@
     <label for="user">E-mail</label>
     <input id="user" type="email" autocomplete="username" autofocus placeholder="voce@casasognatto.com.br" />
     <label for="pass">Senha</label>
-    <input id="pass" type="password" autocomplete="current-password" />
+    <div class="pw-field">
+      <input id="pass" type="password" autocomplete="current-password" />
+      <button type="button" class="pw-toggle" data-target="pass" aria-label="Mostrar senha">
+        <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.13 9.13 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
     <button id="btn">Entrar</button>
     <div class="error" id="err"></div>
     <a class="forgot" href="/forgot">Esqueci minha senha</a>
@@ -122,6 +141,16 @@
   }
   btn.addEventListener("click", login);
   [user, pass].forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") login(); }));
+
+  document.querySelectorAll(".pw-toggle").forEach((toggle) => {
+    const input = document.getElementById(toggle.dataset.target);
+    toggle.addEventListener("click", () => {
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      toggle.classList.toggle("active", !showing);
+      toggle.setAttribute("aria-label", showing ? "Mostrar senha" : "Ocultar senha");
+    });
+  });
 </script>
 </body>
 </html>
