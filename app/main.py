@@ -385,6 +385,7 @@ class ConvCreate(BaseModel):
 class ConvUpdate(BaseModel):
     title: str | None = None
     data: dict | None = None
+    environmentId: str | None = None
 
 
 class ConvBulkDelete(BaseModel):
@@ -756,6 +757,12 @@ def update_conversation(cid: str, body: ConvUpdate, request: Request):
     if body.data is not None:
         sets.append("data = %s")
         params.append(json.dumps(body.data))
+    if body.environmentId is not None:
+        # Reconecta uma conversa solta a um ambiente (ex: recuperar depois
+        # de um cliente ter sido apagado por engano) — não existe caminho
+        # pra "soltar" via este campo, só pra ligar.
+        sets.append("environment_id = %s")
+        params.append(body.environmentId)
     if not sets:
         return {"ok": True}
     sets.append("updated_at = now()")
