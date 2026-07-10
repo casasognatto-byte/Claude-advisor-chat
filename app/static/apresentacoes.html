@@ -90,7 +90,8 @@
   /* --- Viewer em tela cheia --- */
   .viewer-overlay { position: fixed; inset: 0; background: #000; display: none; align-items: center; justify-content: center; z-index: 200; flex-direction: column; }
   .viewer-overlay.open { display: flex; }
-  .viewer-overlay img { max-width: 92vw; max-height: 78vh; object-fit: contain; }
+  .viewer-frame { width: min(92vw, calc(78vh * 16 / 9)); aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; background: #000; }
+  .viewer-frame img { max-width: 100%; max-height: 100%; object-fit: contain; }
   .viewer-caption { color: var(--cream); font-size: 14px; margin-top: 14px; text-align: center; }
   .viewer-counter { color: var(--muted); font-size: 12px; margin-top: 4px; }
   .viewer-nav { position: absolute; top: 0; bottom: 0; width: 15%; display: flex; align-items: center; font-size: 34px; color: rgba(236,233,225,.5); background: transparent; border: none; cursor: pointer; }
@@ -210,7 +211,7 @@
 <div class="viewer-overlay" id="viewerOverlay">
   <button class="viewer-close" id="viewerClose">✕</button>
   <button class="viewer-nav prev" id="viewerPrev">‹</button>
-  <img id="viewerImg" src="" alt="" />
+  <div class="viewer-frame"><img id="viewerImg" src="" alt="" /></div>
   <button class="viewer-nav next" id="viewerNext">›</button>
   <div class="viewer-caption" id="viewerCaption"></div>
   <div class="viewer-counter" id="viewerCounter"></div>
