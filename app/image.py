@@ -192,6 +192,39 @@ async def _run_render_params(job_id: str, prompt: str) -> None:
         print(f"[image job {job_id}] falha ao derivar parâmetros do inspetor: {e}")
 
 
+def _bridge_to_project_images(job_id: str, key: str, mime: str) -> None:
+    """Se a conversa deste job pertence a um ambiente (Cliente > Ambiente,
+    ver client_environments), o render também entra automaticamente na lista
+    ordenável daquele ambiente em Apresentações — sem isso, o deck final não
+    veria os renders feitos pelo chat. Reaproveita a mesma storage_key, sem
+    reupload. Conversa sem ambiente (o padrão de sempre) não faz nada aqui."""
+    from app.main import _db
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT c.environment_id, ce.project_id FROM image_jobs j "
+            "JOIN conversations c ON c.id = j.conversation_id "
+            "JOIN client_environments ce ON ce.id = c.environment_id "
+            "WHERE j.id = %s",
+            (job_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return
+        environment_id, project_id = row
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM project_images WHERE environment_id = %s",
+            (environment_id,),
+        )
+        next_order = cur.fetchone()[0]
+        image_id = "pi" + secrets.token_hex(8)
+        cur.execute(
+            "INSERT INTO project_images (id, project_id, storage_key, mime, room_type, environment_id, sort_order) "
+            "VALUES (%s, %s, %s, %s, 'outro', %s, %s)",
+            (image_id, project_id, key, mime, environment_id, next_order),
+        )
+
+
 async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str) -> None:
     from app import storage
     from app.image_engines import ENGINES, ImageGenerationError
@@ -206,6 +239,7 @@ async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str
         key = _image_key(job_id, result_mime)
         storage.put(key, result_bytes, result_mime)
         _update_job(job_id, status="done", image_path=key, image_mime=result_mime)
+        _bridge_to_project_images(job_id, key, result_mime)
     except ImageGenerationError as e:
         print(f"[image job {job_id}] falha do fornecedor ({engine}): {e}")
         _update_job(job_id, status="error", error_message=GENERIC_ERROR)

@@ -153,6 +153,50 @@ def init_presentations_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_project_images_room_usage "
                 "ON project_images (room_type, usage_count DESC);"
             )
+            # Pastas de ambiente dentro de um cliente (09/07/2026) — a arquiteta
+            # cria os ambientes da casa como subpastas, renderiza dentro de cada
+            # uma pelo chat principal e depois escolhe a ordem final aqui em
+            # Apresentações. Projetos antigos (sem nenhuma linha aqui) continuam
+            # usando a ordenação por room_type de sempre — ver _room_position_sql
+            # e get_deck/get_deck_pdf.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS client_environments (
+                    id          TEXT PRIMARY KEY,
+                    project_id  TEXT NOT NULL REFERENCES client_projects(id) ON DELETE CASCADE,
+                    name        TEXT NOT NULL,
+                    sort_order  INTEGER NOT NULL DEFAULT 0,
+                    created_by  TEXT NOT NULL,
+                    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+                );
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_client_environments_project "
+                "ON client_environments (project_id, sort_order);"
+            )
+            cur.execute(
+                "ALTER TABLE project_images ADD COLUMN IF NOT EXISTS environment_id "
+                "TEXT REFERENCES client_environments(id) ON DELETE SET NULL;"
+            )
+            cur.execute(
+                "ALTER TABLE project_images ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0;"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_project_images_environment "
+                "ON project_images (environment_id, sort_order);"
+            )
+            # `conversations` já existe (criada em app.main._init_db, que roda
+            # antes deste init) — a coluna entra aqui porque só agora
+            # client_environments existe pra FK apontar.
+            cur.execute(
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS environment_id "
+                "TEXT REFERENCES client_environments(id) ON DELETE SET NULL;"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_conversations_environment "
+                "ON conversations (environment_id);"
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS style_patterns (
@@ -291,6 +335,22 @@ def _room_position_sql() -> str:
     array_position com parâmetro (menos legível) e deixa a query auto-contida."""
     whens = " ".join(f"WHEN '{room}' THEN {i}" for i, room in enumerate(ROOM_ORDER))
     return f"CASE room_type {whens} ELSE {len(ROOM_ORDER)} END"
+
+
+def _ordered_images_sql(select_cols: str) -> str:
+    """Query completa (só falta o parâmetro project_id) que lista as imagens
+    de um projeto na ordem "natural" da tela: se o projeto já tem ambientes
+    (client_environments), ordena por ambiente arrastado + posição arrastada
+    dentro dele. Projeto sem nenhum ambiente cadastrado (todo projeto antigo,
+    hoje) cai no critério de sempre (room_type fixo + data) — LEFT JOIN faz
+    `ce.*` virar NULL nesse caso, sem quebrar nada já existente."""
+    return (
+        f"SELECT {select_cols} FROM project_images "
+        "LEFT JOIN client_environments ce ON ce.id = project_images.environment_id "
+        "WHERE project_images.project_id = %s "
+        "ORDER BY (project_images.environment_id IS NULL), ce.sort_order, "
+        f"project_images.sort_order, {_room_position_sql()}, project_images.created_at"
+    )
 
 
 # --- Projetos de cliente ------------------------------------------------------
@@ -594,6 +654,198 @@ def reorder_template_slides(template_id: str, body: SlideReorder, request: Reque
     return {"ok": True}
 
 
+# --- Ambientes (subpastas dentro de um cliente) ------------------------------
+# A arquiteta cria os ambientes da casa como subpastas de um cliente,
+# renderiza dentro de cada uma pelo chat principal (1 ambiente = 1 conversa,
+# ver get_environment_conversation) e depois escolhe a ordem final aqui em
+# Apresentações. Ver memory/project_neusa_apresentacoes_arquitetas.md.
+# Registradas ANTES de /{project_id} pelo mesmo motivo do bloco de /templates
+# acima: "/tree" tem 1 segmento só, seria capturado pelo catch-all se viesse
+# depois.
+class EnvironmentCreate(BaseModel):
+    name: str
+
+
+class EnvironmentUpdate(BaseModel):
+    name: str
+
+
+class EnvironmentReorder(BaseModel):
+    orderedIds: list[str]
+
+
+@router.get("/tree")
+def get_projects_tree(request: Request):
+    """Clientes + ambientes, pra alimentar a árvore da sidebar do chat
+    principal sem N+1 requests (1 chamada só)."""
+    from app.main import DB_ENABLED, _db, require_user
+
+    require_user(request)
+    if not DB_ENABLED:
+        return []
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, client_name FROM client_projects ORDER BY created_at DESC")
+        projects = cur.fetchall()
+        cur.execute(
+            "SELECT id, project_id, name, sort_order FROM client_environments "
+            "ORDER BY project_id, sort_order"
+        )
+        envs_by_project: dict[str, list[dict]] = {}
+        for env_id, project_id, name, sort_order in cur.fetchall():
+            envs_by_project.setdefault(project_id, []).append(
+                {"id": env_id, "name": name, "sortOrder": sort_order}
+            )
+    return [
+        {"id": p[0], "clientName": p[1], "environments": envs_by_project.get(p[0], [])}
+        for p in projects
+    ]
+
+
+@router.get("/{project_id}/environments")
+def list_environments(project_id: str, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, name, sort_order FROM client_environments "
+            "WHERE project_id = %s ORDER BY sort_order",
+            (project_id,),
+        )
+        rows = cur.fetchall()
+    return [{"id": r[0], "name": r[1], "sortOrder": r[2]} for r in rows]
+
+
+@router.post("/{project_id}/environments")
+def create_environment(project_id: str, body: EnvironmentCreate, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Nome do ambiente é obrigatório.")
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1 FROM client_projects WHERE id = %s", (project_id,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Projeto não encontrado.")
+        cur.execute(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM client_environments WHERE project_id = %s",
+            (project_id,),
+        )
+        next_order = cur.fetchone()[0]
+        env_id = "env" + secrets.token_hex(8)
+        cur.execute(
+            "INSERT INTO client_environments (id, project_id, name, sort_order, created_by) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (env_id, project_id, name, next_order, user["username"]),
+        )
+    return {"id": env_id, "name": name, "sortOrder": next_order}
+
+
+@router.put("/{project_id}/environments/{env_id}")
+def rename_environment(project_id: str, env_id: str, body: EnvironmentUpdate, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "Nome do ambiente é obrigatório.")
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "UPDATE client_environments SET name = %s WHERE id = %s AND project_id = %s RETURNING id",
+            (name, env_id, project_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Ambiente não encontrado.")
+    return {"ok": True}
+
+
+@router.delete("/{project_id}/environments/{env_id}")
+def delete_environment(project_id: str, env_id: str, request: Request):
+    """Apagar o ambiente NÃO apaga as imagens/conversas ligadas a ele — a FK
+    é ON DELETE SET NULL, então elas só "soltam" da pasta (viram órfãs, como
+    já era o comportamento padrão antes desta feature existir)."""
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM client_environments WHERE id = %s AND project_id = %s RETURNING id",
+            (env_id, project_id),
+        )
+        if not cur.fetchone():
+            raise HTTPException(404, "Ambiente não encontrado.")
+    return {"ok": True}
+
+
+@router.post("/{project_id}/environments/reorder")
+def reorder_environments(project_id: str, body: EnvironmentReorder, request: Request):
+    """Mesmo padrão de reorder_template_slides (linha ~623): o frontend manda
+    a lista inteira já na nova ordem, o servidor reescreve sort_order."""
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        for position, env_id in enumerate(body.orderedIds):
+            cur.execute(
+                "UPDATE client_environments SET sort_order = %s WHERE id = %s AND project_id = %s",
+                (position, env_id, project_id),
+            )
+    return {"ok": True}
+
+
+@router.post("/environments/{env_id}/images/reorder")
+def reorder_environment_images(env_id: str, body: EnvironmentReorder, request: Request):
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        for position, image_id in enumerate(body.orderedIds):
+            cur.execute(
+                "UPDATE project_images SET sort_order = %s WHERE id = %s AND environment_id = %s",
+                (position, image_id, env_id),
+            )
+    return {"ok": True}
+
+
+@router.get("/environments/{env_id}/conversation")
+def get_environment_conversation(env_id: str, request: Request):
+    """1 ambiente = 1 conversa — devolve a mais recente já ligada a este
+    ambiente, criando a primeira se ainda não existir. Resolvido no servidor
+    (não no frontend) pra dois cliques rápidos não criarem duas conversas."""
+    from app.main import _db, _log_activity, _require_db, require_user
+
+    user = require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT name FROM client_environments WHERE id = %s", (env_id,))
+        env = cur.fetchone()
+        if not env:
+            raise HTTPException(404, "Ambiente não encontrado.")
+        cur.execute(
+            "SELECT id, title FROM conversations WHERE environment_id = %s "
+            "ORDER BY updated_at DESC LIMIT 1",
+            (env_id,),
+        )
+        conv = cur.fetchone()
+        if conv:
+            return {"id": conv[0], "title": conv[1]}
+        conv_id = "c" + secrets.token_hex(8)
+        cur.execute(
+            "INSERT INTO conversations (id, owner_username, title, environment_id) "
+            "VALUES (%s, %s, %s, %s)",
+            (conv_id, user["username"], env[0], env_id),
+        )
+    _log_activity(user["username"], "conversa_criada", env[0])
+    return {"id": conv_id, "title": env[0]}
+
+
 @router.get("/{project_id}")
 def get_project(project_id: str, request: Request):
     from app.main import _db, _require_db, require_user
@@ -610,8 +862,9 @@ def get_project(project_id: str, request: Request):
         if not row:
             raise HTTPException(404, "Projeto não encontrado.")
         cur.execute(
-            f"SELECT id, room_type, style, EXTRACT(EPOCH FROM created_at) FROM project_images "
-            f"WHERE project_id = %s ORDER BY {_room_position_sql()}, created_at",
+            f"SELECT id, room_type, style, EXTRACT(EPOCH FROM created_at), environment_id, sort_order "
+            f"FROM project_images WHERE project_id = %s "
+            f"ORDER BY (environment_id IS NULL), environment_id, sort_order, {_room_position_sql()}, created_at",
             (project_id,),
         )
         images = [
@@ -621,9 +874,17 @@ def get_project(project_id: str, request: Request):
                 "roomLabel": ROOM_LABELS.get(r[1], r[1]),
                 "style": r[2],
                 "createdAt": float(r[3]),
+                "environmentId": r[4],
+                "sortOrder": r[5],
             }
             for r in cur.fetchall()
         ]
+        cur.execute(
+            "SELECT id, name, sort_order FROM client_environments "
+            "WHERE project_id = %s ORDER BY sort_order",
+            (project_id,),
+        )
+        environments = [{"id": e[0], "name": e[1], "sortOrder": e[2]} for e in cur.fetchall()]
     with _db() as conn, conn.cursor() as cur:
         cur.execute("SELECT template_id, share_token FROM client_projects WHERE id = %s", (project_id,))
         extra = cur.fetchone()
@@ -633,6 +894,7 @@ def get_project(project_id: str, request: Request):
         "createdBy": row[2],
         "createdAt": float(row[3]),
         "images": images,
+        "environments": environments,
         "templateId": extra[0] if extra else None,
         "shareToken": extra[1] if extra else None,
     }
@@ -811,23 +1073,19 @@ def download_all_images(project_id: str, request: Request):
         project = cur.fetchone()
         if not project:
             raise HTTPException(404, "Projeto não encontrado.")
-        cur.execute(
-            f"SELECT storage_key, room_type FROM project_images WHERE project_id = %s "
-            f"ORDER BY {_room_position_sql()}, created_at",
-            (project_id,),
-        )
+        cur.execute(_ordered_images_sql("storage_key, room_type, ce.name"), (project_id,))
         rows = cur.fetchall()
     if not rows:
         raise HTTPException(404, "Nenhuma imagem neste projeto.")
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, (storage_key, room_type) in enumerate(rows, start=1):
+        for i, (storage_key, room_type, env_name) in enumerate(rows, start=1):
             data = storage.get(storage_key)
             if data is None:
                 continue
             ext = storage_key.rsplit(".", 1)[-1] if "." in storage_key else "jpg"
-            label = _safe_filename_part(ROOM_LABELS.get(room_type, room_type))
+            label = _safe_filename_part(env_name or ROOM_LABELS.get(room_type, room_type))
             zf.writestr(f"{i:02d}_{label}.{ext}", data)
     buf.seek(0)
     filename = _safe_filename_part(project[0]) + ".zip"
@@ -951,16 +1209,12 @@ def get_deck(project_id: str, request: Request):
                 }
                 (fechamento if r[2] else abertura).append(item)
 
-        cur.execute(
-            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
-            f"ORDER BY {_room_position_sql()}, created_at",
-            (project_id,),
-        )
+        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name"), (project_id,))
         ambientes = [
             {
                 "kind": "ambiente",
                 "id": r[0],
-                "caption": ROOM_LABELS.get(r[1], r[1]),
+                "caption": r[2] or ROOM_LABELS.get(r[1], r[1]),
                 "fileUrl": f"/api/presentations/{project_id}/images/{r[0]}/file",
             }
             for r in cur.fetchall()
@@ -1012,11 +1266,7 @@ def get_deck_pdf(project_id: str, request: Request):
             for storage_key, is_closing in cur.fetchall():
                 (fechamento_keys if is_closing else abertura_keys).append(storage_key)
 
-        cur.execute(
-            f"SELECT storage_key FROM project_images WHERE project_id = %s "
-            f"ORDER BY {_room_position_sql()}, created_at",
-            (project_id,),
-        )
+        cur.execute(_ordered_images_sql("storage_key"), (project_id,))
         ambiente_keys = [r[0] for r in cur.fetchall()]
 
     ordered_keys = abertura_keys + ambiente_keys + fechamento_keys
@@ -1116,14 +1366,10 @@ def get_shared_deck(token: str):
                 }
                 (fechamento if r[2] else abertura).append(item)
 
-        cur.execute(
-            f"SELECT id, room_type FROM project_images WHERE project_id = %s "
-            f"ORDER BY {_room_position_sql()}, created_at",
-            (project_id,),
-        )
+        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name"), (project_id,))
         ambientes = [
             {
-                "kind": "ambiente", "id": r[0], "caption": ROOM_LABELS.get(r[1], r[1]),
+                "kind": "ambiente", "id": r[0], "caption": r[2] or ROOM_LABELS.get(r[1], r[1]),
                 "fileUrl": f"/api/presentations/share/{token}/image/{r[0]}/file",
             }
             for r in cur.fetchall()
