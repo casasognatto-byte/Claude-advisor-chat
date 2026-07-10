@@ -160,7 +160,8 @@
       <div class="form-row">
         <button class="primary" id="viewDeckBtn">▶ Ver apresentação</button>
         <a class="ghost" id="downloadAllBtn" style="text-decoration:none;">⬇ Baixar todas (.zip)</a>
-        <a class="ghost" id="downloadPdfBtn" style="text-decoration:none;">⬇ Baixar PDF</a>
+        <a class="ghost" id="downloadTvBtn" style="text-decoration:none;">📺 Baixar p/ TV</a>
+        <a class="ghost" id="downloadA4Btn" style="text-decoration:none;">🖨 Imprimir A4</a>
         <button class="danger" id="deleteProjectBtn">Apagar projeto</button>
       </div>
       <div class="form-row">
@@ -308,7 +309,8 @@
     document.getElementById("projectsList").style.display = "none";
     document.getElementById("projectDetail").style.display = "block";
     document.getElementById("downloadAllBtn").href = `/api/presentations/${id}/images/download-all`;
-    document.getElementById("downloadPdfBtn").href = `/api/presentations/${id}/deck.pdf`;
+    document.getElementById("downloadTvBtn").href = `/api/presentations/${id}/deck.pdf?target=tv`;
+    document.getElementById("downloadA4Btn").href = `/api/presentations/${id}/deck.pdf?target=a4`;
     await refreshProject();
   }
 
