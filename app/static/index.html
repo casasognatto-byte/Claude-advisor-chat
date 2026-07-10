@@ -623,7 +623,7 @@
     else { c.environmentId = envId; }
     activeId = c.id;
     await ensureData(c);
-    renderList(); renderChat(); input.focus();
+    renderList(); renderChat(); renderStagedRow(); input.focus();
     if (window.innerWidth < 769) document.body.classList.add("collapsed");
   }
 
@@ -924,14 +924,14 @@
   // ---------- Operações ----------
   function newConv() {
     const c = { id: uid(), title: "Nova conversa", updatedAt: Date.now(), data: emptyData(), _new: true };
-    conversations.unshift(c); activeId = c.id; renderList(); renderChat(); input.focus();
+    conversations.unshift(c); activeId = c.id; renderList(); renderChat(); renderStagedRow(); input.focus();
   }
   async function selectConv(id) {
     activeId = id;
     const c = active();
     activeEnvironmentId = (c && c.environmentId) || null;
     if (c) await ensureData(c);
-    renderList(); renderChat(); input.focus();
+    renderList(); renderChat(); renderStagedRow(); input.focus();
   }
   async function renameConv(id) {
     const c = conversations.find(x => x.id === id); if (!c) return;
@@ -990,17 +990,29 @@
   }
 
   // ---------- Arquivos "em espera" (anexa, ajusta o prompt, só gera ao clicar) ----------
-  let stagedKind = null;   // sempre "image" — vídeo foi removido em 08/07/2026
-  let stagedFiles = [];
+  // Escopados por conversa (stagedByConv) — sem isso, anexar em "Cozinha" e
+  // depois trocar pra "Closet" sem gerar misturava os arquivos das duas
+  // (achado real do Davi: gerava tudo na conversa errada).
+  let stagedByConv = new Map(); // conversationId -> { kind: "image", files: [] }
   let stagedSelectMode = false;
   let stagedSelectedIdx = new Set();
+
+  function getStagedEntry(create) {
+    if (!activeId) return { kind: null, files: [] };
+    if (!stagedByConv.has(activeId)) {
+      if (!create) return { kind: null, files: [] };
+      stagedByConv.set(activeId, { kind: null, files: [] });
+    }
+    return stagedByConv.get(activeId);
+  }
 
   function renderStagedRow() {
     const row = document.getElementById("stagedRow");
     const tools = document.getElementById("stagedTools");
     const genBtn = document.getElementById("generateBtn");
     row.innerHTML = ""; tools.innerHTML = "";
-    if (!stagedFiles.length) {
+    const entry = getStagedEntry(false);
+    if (!entry.files.length) {
       row.style.display = "none";
       tools.style.display = "none";
       genBtn.style.display = "none";
@@ -1028,9 +1040,9 @@
       remBtn.disabled = !stagedSelectedIdx.size;
       remBtn.textContent = stagedSelectedIdx.size ? `Remover selecionadas (${stagedSelectedIdx.size})` : "Remover selecionadas";
       remBtn.addEventListener("click", () => {
-        stagedFiles = stagedFiles.filter((_, i) => !stagedSelectedIdx.has(i));
+        entry.files = entry.files.filter((_, i) => !stagedSelectedIdx.has(i));
         stagedSelectedIdx.clear(); stagedSelectMode = false;
-        if (!stagedFiles.length) stagedKind = null;
+        if (!entry.files.length) stagedByConv.delete(activeId);
         renderStagedRow();
       });
       tools.appendChild(remBtn);
@@ -1040,12 +1052,13 @@
     clearBtn.type = "button"; clearBtn.className = "sel-toggle danger";
     clearBtn.textContent = "Limpar tudo";
     clearBtn.addEventListener("click", () => {
-      stagedFiles = []; stagedKind = null; stagedSelectMode = false; stagedSelectedIdx.clear();
+      stagedByConv.delete(activeId);
+      stagedSelectMode = false; stagedSelectedIdx.clear();
       renderStagedRow();
     });
     tools.appendChild(clearBtn);
 
-    stagedFiles.forEach((file, idx) => {
+    entry.files.forEach((file, idx) => {
       const chip = document.createElement("span");
       chip.className = "staged-chip";
       if (stagedSelectMode) {
@@ -1065,8 +1078,8 @@
         const rm = document.createElement("button");
         rm.className = "remove"; rm.title = "Remover"; rm.textContent = "✕";
         rm.addEventListener("click", () => {
-          stagedFiles.splice(idx, 1);
-          if (!stagedFiles.length) stagedKind = null;
+          entry.files.splice(idx, 1);
+          if (!entry.files.length) stagedByConv.delete(activeId);
           renderStagedRow();
         });
         chip.appendChild(rm);
@@ -1076,15 +1089,17 @@
   }
 
   function stageFiles(kind, files) {
-    stagedKind = kind;
-    stagedFiles = stagedFiles.concat(files);
+    const entry = getStagedEntry(true);
+    entry.kind = kind;
+    entry.files = entry.files.concat(files);
     renderStagedRow();
   }
 
   document.getElementById("generateBtn").addEventListener("click", async () => {
-    if (!stagedFiles.length) return;
-    const files = stagedFiles;
-    stagedFiles = []; stagedKind = null; renderStagedRow();
+    const entry = getStagedEntry(false);
+    if (!entry.files.length) return;
+    const files = entry.files;
+    stagedByConv.delete(activeId); renderStagedRow();
     for (const file of files) await startImageJob(file);
   });
 
