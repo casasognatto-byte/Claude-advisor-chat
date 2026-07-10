@@ -190,6 +190,7 @@
       <input type="file" id="openUpload" accept="image/*,application/pdf" />
       <input type="text" id="openCaption" placeholder="Legenda" />
       <button class="primary" id="openAddBtn">Salvar Abertura</button>
+      <button class="danger" id="openReplaceBtn" title="Apaga a abertura atual e sobe esta no lugar">Substituir Abertura</button>
     </div>
     <div class="muted" style="font-size:11.5px; margin-top:4px;">Aceita imagem ou PDF — PDF com várias páginas vira uma sequência de slides, na ordem.</div>
     <div class="slide-grid" id="openGrid"></div>
@@ -200,6 +201,7 @@
       <input type="file" id="closeUpload" accept="image/*,application/pdf" />
       <input type="text" id="closeCaption" placeholder="Legenda" />
       <button class="primary" id="closeAddBtn">Salvar Fechamento</button>
+      <button class="danger" id="closeReplaceBtn" title="Apaga o fechamento atual e sobe este no lugar">Substituir Fechamento</button>
     </div>
     <div class="muted" style="font-size:11.5px; margin-top:4px;">Aceita imagem ou PDF — PDF com várias páginas vira uma sequência de slides, na ordem.</div>
     <div class="slide-grid" id="closeGrid"></div>
@@ -757,20 +759,25 @@
     loadTemplateSlides();
   }
 
-  document.getElementById("openAddBtn").addEventListener("click", () => addTemplateSlide(false));
-  document.getElementById("closeAddBtn").addEventListener("click", () => addTemplateSlide(true));
+  document.getElementById("openAddBtn").addEventListener("click", () => addTemplateSlide(false, false));
+  document.getElementById("closeAddBtn").addEventListener("click", () => addTemplateSlide(true, false));
+  document.getElementById("openReplaceBtn").addEventListener("click", () => addTemplateSlide(false, true));
+  document.getElementById("closeReplaceBtn").addEventListener("click", () => addTemplateSlide(true, true));
 
-  async function addTemplateSlide(isClosing) {
+  async function addTemplateSlide(isClosing, replace) {
     const fileInput = document.getElementById(isClosing ? "closeUpload" : "openUpload");
     const captionInput = document.getElementById(isClosing ? "closeCaption" : "openCaption");
-    const btn = document.getElementById(isClosing ? "closeAddBtn" : "openAddBtn");
+    const label = isClosing ? "Fechamento" : "Abertura";
+    const btn = document.getElementById(replace ? (isClosing ? "closeReplaceBtn" : "openReplaceBtn") : (isClosing ? "closeAddBtn" : "openAddBtn"));
     if (!fileInput.files.length) { toast("Escolha uma imagem ou um PDF."); return; }
+    if (replace && !confirm(`Isso apaga todos os slides atuais de ${label} e sobe este arquivo no lugar. Continuar?`)) return;
     const file = fileInput.files[0];
     const isPdf = file.type === "application/pdf";
     const fd = new FormData();
     fd.append("image", file);
     fd.append("caption", captionInput.value.trim());
     fd.append("is_closing", isClosing ? "true" : "false");
+    fd.append("replace", replace ? "true" : "false");
     const originalLabel = btn.textContent;
     btn.disabled = true;
     btn.textContent = isPdf ? "Enviando PDF… pode levar um pouco" : "Enviando…";

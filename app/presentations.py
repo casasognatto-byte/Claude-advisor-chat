@@ -496,7 +496,7 @@ def list_template_slides(template_id: str, request: Request):
 @router.post("/templates/{template_id}/slides")
 async def add_template_slide(
     template_id: str, request: Request, image: UploadFile = File(...),
-    caption: str = Form(""), is_closing: bool = Form(False),
+    caption: str = Form(""), is_closing: bool = Form(False), replace: bool = Form(False),
 ):
     from app import storage
     from app.main import _db, _require_db, require_user
@@ -525,6 +525,23 @@ async def add_template_slide(
         cur.execute("SELECT 1 FROM presentation_templates WHERE id = %s", (template_id,))
         if not cur.fetchone():
             raise HTTPException(404, "Modelo não encontrado.")
+
+    if replace:
+        # "Substituir" — apaga todo o grupo atual (abertura OU fechamento,
+        # nunca os dois) antes de inserir os novos slides, pra não ficar com
+        # o conjunto antigo e o novo misturados.
+        with _db() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT storage_key FROM institutional_slides WHERE template_id = %s AND is_closing = %s",
+                (template_id, is_closing),
+            )
+            old_keys = [r[0] for r in cur.fetchall()]
+            cur.execute(
+                "DELETE FROM institutional_slides WHERE template_id = %s AND is_closing = %s",
+                (template_id, is_closing),
+            )
+        for key in old_keys:
+            storage.delete(key)
 
     slide_ids = ["inst" + secrets.token_hex(8) for _ in page_files]
     storage_keys = []
