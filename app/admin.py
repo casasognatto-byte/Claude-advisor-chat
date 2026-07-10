@@ -20,11 +20,13 @@ class UserCreate(BaseModel):
     cargo: str | None = None
 
 
-def _send_invite(username: str, email: str, background_tasks: BackgroundTasks) -> None:
+def _send_invite(username: str, email: str, background_tasks: BackgroundTasks) -> str:
     """Gera token de confirmação e agenda o convite em segundo plano, por
     dois canais: e-mail (SMTP direto do Render pra KingHost não funciona —
     ver memória do projeto, "Errno 101") e chat do ClickUp (funciona por
-    HTTPS). Nenhum dos dois pode travar a resposta pro navegador."""
+    HTTPS). Nenhum dos dois pode travar a resposta pro navegador. Devolve o
+    link também pra quem chamou poder usar direto (email/ClickUp podem
+    falhar ou demorar)."""
     from app.main import CONFIRM_TTL, _create_auth_token, _public_base_url
     from app.email_send import send_invite_email
     from app.clickup_alert import send_clickup_dm
@@ -37,6 +39,7 @@ def _send_invite(username: str, email: str, background_tasks: BackgroundTasks) -
         f"👋 Olá, {username}! Seu acesso à plataforma da Casa Sognatto foi criado. "
         f"Confirme e defina sua senha aqui: {link}\n\nEste link expira em 7 dias.",
     )
+    return link
 
 
 @router.get("/users")
@@ -91,8 +94,8 @@ def create_user(body: UserCreate, request: Request, background_tasks: Background
             "email = EXCLUDED.email, role = EXCLUDED.role, cargo = EXCLUDED.cargo, active = true",
             (name, email, role, body.cargo),
         )
-    _send_invite(name, email, background_tasks)
-    return {"ok": True}
+    link = _send_invite(name, email, background_tasks)
+    return {"ok": True, "link": link}
 
 
 @router.post("/users/{username}/resend-invite")
@@ -106,8 +109,8 @@ def resend_invite(username: str, request: Request, background_tasks: BackgroundT
         row = cur.fetchone()
     if not row or not row[0]:
         raise HTTPException(404, "Usuário não encontrado ou sem e-mail.")
-    _send_invite(username, row[0], background_tasks)
-    return {"ok": True}
+    link = _send_invite(username, row[0], background_tasks)
+    return {"ok": True, "link": link}
 
 
 @router.delete("/users/{username}")
