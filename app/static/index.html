@@ -107,7 +107,10 @@
   .action-chip:disabled { opacity: .5; cursor: default; }
   .hint { max-width: 760px; margin: 9px auto 0; font-size: 10.5px; color: var(--muted); text-align: center; }
 
+  .staged-tools { display: flex; gap: 6px; padding: 0 4px 6px; }
+  .staged-tools .sel-toggle { flex: none; }
   .staged-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px 10px; }
+  .staged-chip .sel-check { accent-color: var(--accent); }
   .staged-chip { display: flex; align-items: center; gap: 6px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: 20px; padding: 5px 6px 5px 12px; font-size: 12px; color: var(--text); }
   .staged-chip .remove { cursor: pointer; color: var(--muted); background: none; border: none; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 50%; }
   .staged-chip .remove:hover { color: var(--danger); background: rgba(255,255,255,.08); }
@@ -284,6 +287,7 @@
     <main id="scroll"><div class="inner" id="chat"></div></main>
     <footer>
       <div class="composer-card">
+        <div class="staged-tools" id="stagedTools" style="display:none;"></div>
         <div class="staged-row" id="stagedRow" style="display:none;"></div>
         <div class="quick-actions" id="quickActions">
           <button type="button" class="action-chip" id="imageBtn" title="Anexar planta/volumetria pra gerar render">📎 Anexar arquivo</button>
@@ -988,28 +992,85 @@
   // ---------- Arquivos "em espera" (anexa, ajusta o prompt, só gera ao clicar) ----------
   let stagedKind = null;   // sempre "image" — vídeo foi removido em 08/07/2026
   let stagedFiles = [];
+  let stagedSelectMode = false;
+  let stagedSelectedIdx = new Set();
 
   function renderStagedRow() {
     const row = document.getElementById("stagedRow");
+    const tools = document.getElementById("stagedTools");
     const genBtn = document.getElementById("generateBtn");
-    row.innerHTML = "";
+    row.innerHTML = ""; tools.innerHTML = "";
     if (!stagedFiles.length) {
       row.style.display = "none";
+      tools.style.display = "none";
       genBtn.style.display = "none";
+      stagedSelectMode = false; stagedSelectedIdx.clear();
       return;
     }
     row.style.display = "flex";
+    tools.style.display = "flex";
     genBtn.style.display = "inline-block";
     genBtn.textContent = "Gerar";
-    stagedFiles.forEach((file, idx) => {
-      const chip = document.createElement("span");
-      chip.className = "staged-chip";
-      chip.innerHTML = `🖼️ ${escapeHtml(file.name)} <button class="remove" title="Remover">✕</button>`;
-      chip.querySelector(".remove").addEventListener("click", () => {
-        stagedFiles.splice(idx, 1);
+
+    const selBtn = document.createElement("button");
+    selBtn.type = "button"; selBtn.className = "sel-toggle";
+    selBtn.textContent = stagedSelectMode ? "Cancelar seleção" : "Selecionar";
+    selBtn.addEventListener("click", () => {
+      stagedSelectMode = !stagedSelectMode;
+      if (!stagedSelectMode) stagedSelectedIdx.clear();
+      renderStagedRow();
+    });
+    tools.appendChild(selBtn);
+
+    if (stagedSelectMode) {
+      const remBtn = document.createElement("button");
+      remBtn.type = "button"; remBtn.className = "sel-toggle danger";
+      remBtn.disabled = !stagedSelectedIdx.size;
+      remBtn.textContent = stagedSelectedIdx.size ? `Remover selecionadas (${stagedSelectedIdx.size})` : "Remover selecionadas";
+      remBtn.addEventListener("click", () => {
+        stagedFiles = stagedFiles.filter((_, i) => !stagedSelectedIdx.has(i));
+        stagedSelectedIdx.clear(); stagedSelectMode = false;
         if (!stagedFiles.length) stagedKind = null;
         renderStagedRow();
       });
+      tools.appendChild(remBtn);
+    }
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button"; clearBtn.className = "sel-toggle danger";
+    clearBtn.textContent = "Limpar tudo";
+    clearBtn.addEventListener("click", () => {
+      stagedFiles = []; stagedKind = null; stagedSelectMode = false; stagedSelectedIdx.clear();
+      renderStagedRow();
+    });
+    tools.appendChild(clearBtn);
+
+    stagedFiles.forEach((file, idx) => {
+      const chip = document.createElement("span");
+      chip.className = "staged-chip";
+      if (stagedSelectMode) {
+        const check = document.createElement("input");
+        check.type = "checkbox"; check.className = "sel-check"; check.title = "Selecionar arquivo";
+        check.checked = stagedSelectedIdx.has(idx);
+        check.addEventListener("click", () => {
+          if (check.checked) stagedSelectedIdx.add(idx); else stagedSelectedIdx.delete(idx);
+          renderStagedRow();
+        });
+        chip.appendChild(check);
+      }
+      const label = document.createElement("span");
+      label.textContent = `🖼️ ${file.name}`;
+      chip.appendChild(label);
+      if (!stagedSelectMode) {
+        const rm = document.createElement("button");
+        rm.className = "remove"; rm.title = "Remover"; rm.textContent = "✕";
+        rm.addEventListener("click", () => {
+          stagedFiles.splice(idx, 1);
+          if (!stagedFiles.length) stagedKind = null;
+          renderStagedRow();
+        });
+        chip.appendChild(rm);
+      }
       row.appendChild(chip);
     });
   }
