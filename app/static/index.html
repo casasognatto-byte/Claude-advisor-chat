@@ -42,9 +42,9 @@
   .client-row .chevron { flex: none; width: 12px; text-align: center; color: var(--muted); font-size: 10px; transition: transform .15s ease; }
   .client-row.expanded .chevron { transform: rotate(90deg); }
   .client-row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .client-row .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; }
+  .client-row .del { flex: none; opacity: .55; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; }
   .client-row:hover .del { opacity: .8; }
-  .client-row .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
+  .client-row .del:hover { opacity: 1; color: var(--danger); background: rgba(224,121,107,.1); }
   .env-list { padding-left: 16px; margin-bottom: 4px; }
   .env-row { display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-bottom: 2px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-dim); font-size: 13px; border: 1px solid transparent; }
   .env-row:hover { background: var(--glass-bg-soft); color: var(--text); }
