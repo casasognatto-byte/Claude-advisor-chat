@@ -701,17 +701,20 @@ def list_conversations(request: Request, owner: str | None = None):
     with _db() as conn, conn.cursor() as cur:
         if owner and owner != "all":
             cur.execute(
-                "SELECT id, title, EXTRACT(EPOCH FROM updated_at) "
+                "SELECT id, title, EXTRACT(EPOCH FROM updated_at), environment_id "
                 "FROM conversations WHERE owner_username = %s ORDER BY updated_at DESC",
                 (owner,),
             )
         else:
             cur.execute(
-                "SELECT id, title, EXTRACT(EPOCH FROM updated_at) "
+                "SELECT id, title, EXTRACT(EPOCH FROM updated_at), environment_id "
                 "FROM conversations ORDER BY updated_at DESC"
             )
         rows = cur.fetchall()
-    return [{"id": r[0], "title": r[1], "updatedAt": float(r[2])} for r in rows]
+    return [
+        {"id": r[0], "title": r[1], "updatedAt": float(r[2]), "environmentId": r[3]}
+        for r in rows
+    ]
 
 
 @app.get("/api/conversations/{cid}")

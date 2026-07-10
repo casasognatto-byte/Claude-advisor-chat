@@ -35,6 +35,29 @@
   .conv .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
   .conv:hover .del { opacity: .8; }
   .conv .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
+
+  /* ---------------- Árvore cliente / ambiente ---------------- */
+  .client-row { display: flex; align-items: center; gap: 6px; padding: 9px 11px; margin-bottom: 2px; cursor: pointer; color: var(--text); font-size: 13.5px; font-weight: 600; border-radius: var(--radius-sm); }
+  .client-row:hover { background: var(--glass-bg-soft); }
+  .client-row .chevron { flex: none; width: 12px; text-align: center; color: var(--muted); font-size: 10px; transition: transform .15s ease; }
+  .client-row.expanded .chevron { transform: rotate(90deg); }
+  .client-row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .env-list { padding-left: 16px; margin-bottom: 4px; }
+  .env-row { display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-bottom: 2px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-dim); font-size: 13px; border: 1px solid transparent; }
+  .env-row:hover { background: var(--glass-bg-soft); color: var(--text); }
+  .env-row.active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--text); }
+  .env-row.dragging { opacity: .4; }
+  .env-row .drag-handle { flex: none; color: var(--muted); cursor: grab; font-size: 12px; }
+  .env-row .name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .env-row .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; }
+  .env-row:hover .del { opacity: .8; }
+  .env-row .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
+  .env-add-row { display: flex; align-items: center; gap: 6px; padding: 7px 10px; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); border: 1px dashed var(--glass-border); background: none; width: 100%; text-align: left; font-family: inherit; }
+  .env-add-row:hover { color: var(--accent-soft); border-color: var(--accent-border); }
+  .new-client-row { display: flex; align-items: center; gap: 8px; }
+  .new-client-row input { flex: 1; }
+  .new-client-row .rm { flex: none; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 4px 6px; border-radius: 6px; }
+  .new-client-row .rm:hover { color: var(--danger); background: rgba(224,121,107,.1); }
   .sb-footer { border-top: 1px solid var(--glass-border); padding: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
   .sb-footer .user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sb-footer .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; width: 100%; }
@@ -222,7 +245,7 @@
       </div>
       <div class="tagline">CASA SOGNATTO</div>
     </div>
-    <button class="new-btn" id="new">＋ Novo render</button>
+    <button class="new-btn" id="new" title="Criar cliente + ambientes">＋ Novo render</button>
     <a class="new-btn" id="presentationsLink" href="/apresentacoes" style="text-decoration:none;">Apresentações</a>
     <select class="owner-filter" id="ownerFilter" style="display:none;"></select>
     <div class="conv-list-tools" id="convListTools">
@@ -349,6 +372,29 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="newClientOverlay" style="display:none;">
+    <div class="modal-card" style="width:min(520px,92vw);">
+      <div class="modal-header">
+        <button class="modal-back" id="newClientBack">← Voltar</button>
+        <div class="modal-title">Novo cliente</div>
+        <button class="modal-close" id="newClientClose">✕</button>
+      </div>
+      <div style="padding:18px 20px; display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em;">Nome do cliente</label>
+          <input id="newClientName" placeholder="Ex: João XXIII" style="width:100%;" />
+        </div>
+        <div>
+          <label style="display:block; font-size:11px; color:var(--muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em;">Ambientes da casa</label>
+          <div id="newClientEnvRows" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <button type="button" class="env-add-row" id="newClientAddEnvBtn" style="margin-top:8px;">+ Ambiente</button>
+        </div>
+        <div class="muted" id="newClientMsg" style="font-size:12px;"></div>
+        <button class="primary" id="newClientCreateBtn" style="align-self:flex-end;">Criar</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   // ---------- Camada de armazenamento (remoto via API ou local) ----------
   const Store = {
@@ -414,12 +460,15 @@
   };
 
   // ---------- Estado ----------
-  let conversations = [];   // {id,title,updatedAt,data|null,_new}
+  let conversations = [];   // {id,title,updatedAt,data|null,_new,environmentId}
   let activeId = null;
   let currentUser = "anon";
   let currentRole = null;
   let convSelectMode = false;
   let convSelectedIds = new Set();
+  let treeData = [];        // [{id, clientName, environments:[{id,name,sortOrder}]}]
+  let expandedClients = new Set();
+  let activeEnvironmentId = null;
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -449,29 +498,218 @@
   }
 
   // ---------- Renderização ----------
+  function renderConvRow(c) {
+    const row = document.createElement("div");
+    row.className = "conv" + (c.id === activeId ? " active" : "");
+    const check = document.createElement("input");
+    check.type = "checkbox"; check.className = "sel-check"; check.title = "Selecionar conversa";
+    check.checked = convSelectedIds.has(c.id);
+    check.addEventListener("click", (e) => { e.stopPropagation(); toggleConvSelected(c.id, check.checked); });
+    const t = document.createElement("div");
+    t.className = "title"; t.textContent = c.title || "Nova conversa"; t.title = "Clique duplo para renomear";
+    const del = document.createElement("button");
+    del.className = "del"; del.innerHTML = "🗑"; del.title = "Excluir conversa";
+    row.appendChild(check); row.appendChild(t); row.appendChild(del);
+    row.addEventListener("click", () => {
+      if (convSelectMode) { check.checked = !check.checked; toggleConvSelected(c.id, check.checked); return; }
+      selectConv(c.id);
+    });
+    t.addEventListener("dblclick", (e) => { e.stopPropagation(); renameConv(c.id); });
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteConv(c.id); });
+    return row;
+  }
+
   function renderList() {
     convListEl.innerHTML = "";
-    for (const c of conversations) {
-      const row = document.createElement("div");
-      row.className = "conv" + (c.id === activeId ? " active" : "");
-      const check = document.createElement("input");
-      check.type = "checkbox"; check.className = "sel-check"; check.title = "Selecionar conversa";
-      check.checked = convSelectedIds.has(c.id);
-      check.addEventListener("click", (e) => { e.stopPropagation(); toggleConvSelected(c.id, check.checked); });
-      const t = document.createElement("div");
-      t.className = "title"; t.textContent = c.title || "Nova conversa"; t.title = "Clique duplo para renomear";
-      const del = document.createElement("button");
-      del.className = "del"; del.innerHTML = "🗑"; del.title = "Excluir conversa";
-      row.appendChild(check); row.appendChild(t); row.appendChild(del);
-      row.addEventListener("click", () => {
-        if (convSelectMode) { check.checked = !check.checked; toggleConvSelected(c.id, check.checked); return; }
-        selectConv(c.id);
+
+    // --- árvore cliente > ambiente (Biblioteca de Apresentações) ---
+    for (const client of treeData) {
+      const expanded = expandedClients.has(client.id);
+      const cRow = document.createElement("div");
+      cRow.className = "client-row" + (expanded ? " expanded" : "");
+      cRow.innerHTML = '<span class="chevron">▸</span><span class="name"></span>';
+      cRow.querySelector(".name").textContent = client.clientName;
+      cRow.addEventListener("click", () => {
+        if (expanded) expandedClients.delete(client.id); else expandedClients.add(client.id);
+        renderList();
       });
-      t.addEventListener("dblclick", (e) => { e.stopPropagation(); renameConv(c.id); });
-      del.addEventListener("click", (e) => { e.stopPropagation(); deleteConv(c.id); });
-      convListEl.appendChild(row);
+      convListEl.appendChild(cRow);
+      if (!expanded) continue;
+
+      const envList = document.createElement("div");
+      envList.className = "env-list";
+      for (const env of client.environments) {
+        const eRow = document.createElement("div");
+        eRow.className = "env-row" + (activeEnvironmentId === env.id ? " active" : "");
+        eRow.dataset.id = env.id;
+        eRow.innerHTML = '<span class="drag-handle">⠿</span><span class="name"></span><button class="del" title="Apagar ambiente">🗑</button>';
+        eRow.querySelector(".name").textContent = env.name;
+        eRow.title = "Clique duplo para renomear";
+        eRow.addEventListener("click", () => openEnvironment(env.id));
+        eRow.addEventListener("dblclick", (e) => { e.stopPropagation(); renameEnvironment(client.id, env.id, env.name); });
+        eRow.querySelector(".del").addEventListener("click", (e) => { e.stopPropagation(); deleteEnvironment(client.id, env.id); });
+        envList.appendChild(eRow);
+      }
+      const addRow = document.createElement("button");
+      addRow.type = "button"; addRow.className = "env-add-row"; addRow.textContent = "+ Ambiente";
+      addRow.addEventListener("click", () => addEnvironment(client.id));
+      envList.appendChild(addRow);
+      convListEl.appendChild(envList);
+
+      makeDragReorderable(envList, ".env-row", (orderedIds) => reorderEnvironments(client.id, orderedIds));
     }
+
+    // --- conversas soltas (sem cliente) — comportamento de sempre ---
+    const loose = conversations.filter(c => c.environmentId == null);
+    if (treeData.length) {
+      const label = document.createElement("div");
+      label.className = "conv-section-label"; label.textContent = "Sem cliente";
+      convListEl.appendChild(label);
+    }
+    for (const c of loose) convListEl.appendChild(renderConvRow(c));
   }
+
+  // ---------- Árvore cliente/ambiente: arrastar-e-soltar + CRUD ----------
+  function makeDragReorderable(container, itemSelector, onReorder) {
+    let dragEl = null;
+    container.querySelectorAll(itemSelector).forEach((el) => {
+      el.draggable = true;
+      el.addEventListener("dragstart", () => { dragEl = el; setTimeout(() => el.classList.add("dragging"), 0); });
+      el.addEventListener("dragend", () => { el.classList.remove("dragging"); dragEl = null; });
+      el.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dragEl || dragEl === el) return;
+        const rect = el.getBoundingClientRect();
+        const before = (e.clientY - rect.top) < rect.height / 2;
+        container.insertBefore(dragEl, before ? el : el.nextSibling);
+      });
+      el.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const ids = Array.from(container.querySelectorAll(itemSelector)).map((x) => x.dataset.id);
+        onReorder(ids);
+      });
+    });
+  }
+
+  async function loadTree() {
+    try { treeData = await fetch("/api/presentations/tree").then((r) => (r.ok ? r.json() : [])); }
+    catch (_) { treeData = []; }
+    renderList();
+  }
+
+  async function openEnvironment(envId) {
+    let conv = null;
+    try { conv = await fetch(`/api/presentations/environments/${envId}/conversation`).then((r) => (r.ok ? r.json() : null)); }
+    catch (_) {}
+    if (!conv) { alert("Não foi possível abrir esse ambiente."); return; }
+    activeEnvironmentId = envId;
+    let c = conversations.find((x) => x.id === conv.id);
+    if (!c) { c = { id: conv.id, title: conv.title, updatedAt: Date.now(), data: null, _new: false, environmentId: envId }; conversations.unshift(c); }
+    else { c.environmentId = envId; }
+    activeId = c.id;
+    await ensureData(c);
+    renderList(); renderChat(); input.focus();
+    if (window.innerWidth < 769) document.body.classList.add("collapsed");
+  }
+
+  async function renameEnvironment(projectId, envId, currentName) {
+    const name = prompt("Nome do ambiente:", currentName || "");
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      await fetch(`/api/presentations/${projectId}/environments/${envId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: trimmed }),
+      });
+    } catch (_) {}
+    await loadTree();
+  }
+
+  async function deleteEnvironment(projectId, envId) {
+    if (!confirm("Apagar este ambiente? As imagens e a conversa ligadas a ele não são apagadas, só soltam da pasta.")) return;
+    try { await fetch(`/api/presentations/${projectId}/environments/${envId}`, { method: "DELETE" }); } catch (_) {}
+    if (activeEnvironmentId === envId) activeEnvironmentId = null;
+    await loadTree();
+  }
+
+  async function addEnvironment(projectId) {
+    const name = prompt("Nome do novo ambiente:");
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try {
+      await fetch(`/api/presentations/${projectId}/environments`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: trimmed }),
+      });
+    } catch (_) {}
+    expandedClients.add(projectId);
+    await loadTree();
+  }
+
+  async function reorderEnvironments(projectId, orderedIds) {
+    try {
+      await fetch(`/api/presentations/${projectId}/environments/reorder`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderedIds }),
+      });
+    } catch (_) {}
+    await loadTree();
+  }
+
+  // ---------- Modal "Novo render": cria cliente + ambientes de uma vez ----------
+  function addNewClientEnvRow(value) {
+    const wrap = document.getElementById("newClientEnvRows");
+    const row = document.createElement("div");
+    row.className = "new-client-row";
+    row.innerHTML = '<input placeholder="Ex: Living" /><button type="button" class="rm" title="Remover">✕</button>';
+    row.querySelector("input").value = value || "";
+    row.querySelector(".rm").addEventListener("click", () => row.remove());
+    wrap.appendChild(row);
+  }
+
+  function openNewClientModal() {
+    document.getElementById("newClientName").value = "";
+    document.getElementById("newClientEnvRows").innerHTML = "";
+    document.getElementById("newClientMsg").textContent = "";
+    addNewClientEnvRow("");
+    document.getElementById("newClientOverlay").style.display = "flex";
+    document.getElementById("newClientName").focus();
+  }
+  function closeNewClientModal() {
+    document.getElementById("newClientOverlay").style.display = "none";
+  }
+
+  document.getElementById("newClientAddEnvBtn").addEventListener("click", () => addNewClientEnvRow(""));
+  document.getElementById("newClientClose").addEventListener("click", closeNewClientModal);
+  document.getElementById("newClientBack").addEventListener("click", closeNewClientModal);
+
+  document.getElementById("newClientCreateBtn").addEventListener("click", async () => {
+    const msgEl = document.getElementById("newClientMsg");
+    const name = document.getElementById("newClientName").value.trim();
+    if (!name) { msgEl.textContent = "Preencha o nome do cliente."; return; }
+    const envNames = Array.from(document.querySelectorAll("#newClientEnvRows input")).map((i) => i.value.trim()).filter(Boolean);
+    if (!envNames.length) { msgEl.textContent = "Adicione ao menos um ambiente."; return; }
+    msgEl.textContent = "Criando…";
+    try {
+      const res = await fetch("/api/presentations", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: name }),
+      });
+      if (!res.ok) { msgEl.textContent = "Não foi possível criar o cliente."; return; }
+      const project = await res.json();
+      let firstEnvId = null;
+      for (const envName of envNames) {
+        const r = await fetch(`/api/presentations/${project.id}/environments`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: envName }),
+        });
+        if (r.ok) { const env = await r.json(); if (!firstEnvId) firstEnvId = env.id; }
+      }
+      closeNewClientModal();
+      expandedClients.add(project.id);
+      await loadTree();
+      if (firstEnvId) await openEnvironment(firstEnvId);
+    } catch (_) {
+      msgEl.textContent = "Erro de conexão.";
+    }
+  });
 
   // ---------- Seleção múltipla de conversas (exclusão em lote) ----------
   function toggleConvSelected(id, checked) {
@@ -482,8 +720,9 @@
     const delBtn = document.getElementById("convDeleteSelectedBtn");
     delBtn.disabled = convSelectedIds.size === 0;
     delBtn.textContent = convSelectedIds.size ? `Excluir selecionadas (${convSelectedIds.size})` : "Excluir selecionadas";
+    const looseCount = conversations.filter((c) => c.environmentId == null).length;
     document.getElementById("convSelectAllBtn").textContent =
-      convSelectedIds.size && convSelectedIds.size === conversations.length ? "Desmarcar todas" : "Selecionar todas";
+      convSelectedIds.size && convSelectedIds.size === looseCount ? "Desmarcar todas" : "Selecionar todas";
   }
   function setConvSelectMode(on) {
     convSelectMode = on;
@@ -673,7 +912,10 @@
     conversations.unshift(c); activeId = c.id; renderList(); renderChat(); input.focus();
   }
   async function selectConv(id) {
-    activeId = id; const c = active(); if (c) await ensureData(c);
+    activeId = id;
+    const c = active();
+    activeEnvironmentId = (c && c.environmentId) || null;
+    if (c) await ensureData(c);
     renderList(); renderChat(); input.focus();
   }
   async function renameConv(id) {
@@ -1294,7 +1536,7 @@
     sel.value = "all";
     sel.addEventListener("change", async () => {
       const rows = await Store.listByOwner(sel.value);
-      conversations = rows.map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
+      conversations = rows.map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false, environmentId: c.environmentId || null }));
       renderList();
     });
   }
@@ -1315,8 +1557,9 @@
     if (role === "diretor") {
       document.getElementById("adminLinkTop").style.display = "inline-block";
     }
-    conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
+    conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false, environmentId: c.environmentId || null }));
     await loadOwnerFilter();
+    await loadTree();
     document.getElementById("hint").textContent = Store.mode === "remote"
       ? "Histórico compartilhado entre a equipe · consultas ao advisor aparecem em dourado."
       : "Histórico salvo neste computador · consultas ao advisor aparecem em dourado.";
@@ -1331,12 +1574,13 @@
   input.addEventListener("input", autosize);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
   sendBtn.addEventListener("click", send);
-  document.getElementById("new").addEventListener("click", () => { newConv(); if (window.innerWidth < 769) document.body.classList.add("collapsed"); });
+  document.getElementById("new").addEventListener("click", openNewClientModal);
   document.getElementById("logout").addEventListener("click", logout);
   document.getElementById("convSelectModeBtn").addEventListener("click", () => setConvSelectMode(!convSelectMode));
   document.getElementById("convSelectAllBtn").addEventListener("click", () => {
-    if (convSelectedIds.size === conversations.length) convSelectedIds.clear();
-    else conversations.forEach(c => convSelectedIds.add(c.id));
+    const loose = conversations.filter((c) => c.environmentId == null);
+    if (convSelectedIds.size === loose.length) convSelectedIds.clear();
+    else loose.forEach(c => convSelectedIds.add(c.id));
     updateConvSelectUI();
     renderList();
   });
