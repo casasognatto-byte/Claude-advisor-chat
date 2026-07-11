@@ -1333,7 +1333,7 @@ def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
     for storage_key in ordered_keys:
         data = storage.get(storage_key)
         if data is not None:
-            images.append(_fit_to_page(_open_slide_image(data), page_size, crop_to_fill=(target == "tv")))
+            images.append(_fit_to_page(_open_slide_image(data), page_size))
     if not images:
         raise HTTPException(400, "Nenhum arquivo de slide disponível para exportar.")
 
