@@ -1254,14 +1254,29 @@ _A4_LANDSCAPE_PX = (1754, 1240)  # 297x210mm a 150dpi — bate com resolution=_A
 _TV_PX = (1920, 1080)  # widescreen 16:9 — pra exibir na TV, sem "papel" físico, so a proporção importa
 
 
-def _fit_to_page(img, page_size):
+def _fit_to_page(img, page_size, crop_to_fill=False):
     """Encaixa a imagem numa página de tamanho fixo (sempre paisagem — TV ou
-    A4), sem distorcer: reduz mantendo a proporção original e centraliza,
-    preenchendo o resto com branco."""
+    A4), sem distorcer a proporção original.
+
+    crop_to_fill=False (A4/impressão): reduz até caber inteira na página e
+    centraliza, preenchendo o resto com branco -- garante que o render
+    inteiro apareça (importa quando vira anexo de contrato).
+
+    crop_to_fill=True (TV): amplia até cobrir a página inteira e corta o
+    excedente (centralizado) -- sem margem branca lateral, ao custo de
+    cortar um pouco das bordas quando a proporção da imagem não bate
+    exatamente com 16:9."""
     from PIL import Image
 
     page_w, page_h = page_size
     w, h = img.size
+    if crop_to_fill:
+        scale = max(page_w / w, page_h / h)
+        new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        left = (new_w - page_w) // 2
+        top = (new_h - page_h) // 2
+        return resized.crop((left, top, left + page_w, top + page_h))
     scale = min(page_w / w, page_h / h)
     new_w, new_h = max(1, round(w * scale)), max(1, round(h * scale))
     resized = img.resize((new_w, new_h), Image.LANCZOS)
@@ -1318,7 +1333,7 @@ def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
     for storage_key in ordered_keys:
         data = storage.get(storage_key)
         if data is not None:
-            images.append(_fit_to_page(_open_slide_image(data), page_size))
+            images.append(_fit_to_page(_open_slide_image(data), page_size, crop_to_fill=(target == "tv")))
     if not images:
         raise HTTPException(400, "Nenhum arquivo de slide disponível para exportar.")
 
