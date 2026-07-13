@@ -85,8 +85,7 @@
   .user .bubble { max-width: 74%; background: var(--accent-dim); border: 1px solid var(--accent-border); color: var(--text); border-bottom-right-radius: 4px; }
   .assistant .bubble { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px; }
   .advisor { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--accent-border); border-left-width: 3px; border-radius: var(--radius-md); padding: 14px 18px; font-size: 13px; line-height: 1.6; max-width: 92%; animation: rise-in .28s ease; }
-  .advisor .label { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; display: flex; align-items: center; gap: 7px; }
-  .advisor .advice { white-space: pre-wrap; word-wrap: break-word; color: var(--text-dim); }
+  .advisor .label { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; display: flex; align-items: center; gap: 7px; }
   .error .bubble { background: var(--danger-bg); border: 1px solid rgba(224,121,107,.4); color: #ffd9d3; }
   .empty { margin: auto; text-align: center; color: var(--muted); font-size: 14px; }
   .empty .key { color: var(--accent); opacity: .85; margin-bottom: 12px; font-size: 34px; }
@@ -764,8 +763,7 @@
     } else if (item.type === "advisor") {
       const box = document.createElement("div"); box.className = "advisor";
       const l = document.createElement("div"); l.className = "label"; l.textContent = "🔑 Advisor consultado";
-      const body = document.createElement("div"); body.className = "advice"; body.textContent = item.advice || "(consulta sem texto retornado)";
-      box.appendChild(l); box.appendChild(body); chat.appendChild(box);
+      box.appendChild(l); chat.appendChild(box);
     } else if (item.type === "error") {
       const r = document.createElement("div"); r.className = "msg assistant error";
       const b = document.createElement("div"); b.className = "bubble"; b.textContent = "⚠️ " + item.text; r.appendChild(b); chat.appendChild(r);
