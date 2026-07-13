@@ -30,9 +30,14 @@ FIDELITY_BASE_PROMPT = (
     "nas instruções abaixo — preserve exatamente o mesmo layout, os mesmos móveis, "
     "as mesmas proporções e posições, e a mesma cor e textura de móveis, pedras e "
     "paredes do projeto original. Não invente cômodos, ambientes, portas, janelas, "
-    "móveis ou objetos que não estejam na imagem de referência. Só mude cor, "
-    "textura, material, iluminação ou decoração de algo específico se uma "
-    "instrução abaixo pedir isso pontualmente."
+    "móveis, nichos, prateleiras, torres, colunas ou objetos que não estejam na "
+    "imagem de referência — inclusive nas bordas da imagem: se um móvel, parede ou "
+    "elemento aparece cortado/parcial na borda, mantenha ele exatamente cortado do "
+    "mesmo jeito, NÃO complete, estenda nem imagine o que viria depois da borda. A "
+    "composição, o enquadramento e os limites da cena devem ser idênticos ao "
+    "original — apenas a qualidade visual (luz, textura, material, fotorrealismo) "
+    "muda. Só mude cor, textura, material, iluminação ou decoração de algo "
+    "específico se uma instrução abaixo pedir isso pontualmente."
 )
 
 
