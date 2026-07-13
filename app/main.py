@@ -46,6 +46,7 @@ ADVISOR_BETA = "advisor-tool-2026-03-01"
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4096"))
 ADVISOR_MAX_USES = int(os.environ.get("ADVISOR_MAX_USES", "3"))
 ADVISOR_MAX_TOKENS = int(os.environ.get("ADVISOR_MAX_TOKENS", "2048"))
+WEB_SEARCH_MAX_USES = int(os.environ.get("WEB_SEARCH_MAX_USES", "3"))
 # Personalidade da IA da Casa Sognatto (padrão no código). Pode ser sobrescrita
 # pela variável de ambiente SYSTEM_PROMPT, se preferir configurar pelo Render.
 # Rebrand 08/07/2026: "Neusa" -> "Sogno" (pronúncia "Sonho"), assistente de
@@ -117,7 +118,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "abrir outra IA pra resolver uma dúvida. A única restrição de catálogo "
     "fechado (só cores/materiais oficiais Simonetto/Stimmo) vale especificamente "
     "para o que for de fato aplicado num render de móveis planejados — não para "
-    "perguntas gerais de referência ou pesquisa."
+    "perguntas gerais de referência ou pesquisa.\n"
+    "- Você TEM acesso a busca na internet. Use-a sempre que a pergunta pedir uma "
+    "informação específica e verificável que você não tem certeza absoluta (nome/"
+    "código exato de cor de outra marca, especificação técnica de um produto, preço, "
+    "disponibilidade, notícia recente etc.) — não invente nem chute, busque e "
+    "responda com a informação real."
 )
 SYSTEM_PROMPT = (os.environ.get("SYSTEM_PROMPT") or "").strip() or DEFAULT_SYSTEM_PROMPT
 
@@ -856,7 +862,12 @@ def chat(req: ChatRequest, request: Request):
                         "model": ADVISOR_MODEL,
                         "max_uses": ADVISOR_MAX_USES,
                         "max_tokens": ADVISOR_MAX_TOKENS,
-                    }
+                    },
+                    {
+                        "type": "web_search_20250305",
+                        "name": "web_search",
+                        "max_uses": WEB_SEARCH_MAX_USES,
+                    },
                 ],
                 messages=working,
             )
