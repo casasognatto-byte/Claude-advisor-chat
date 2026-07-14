@@ -26,17 +26,21 @@ services:
       - key: SEED_DIRETOR_PASSWORD
         sync: false   # senha inicial do diretor (Davi); os demais definem a própria via convite
       - key: EMAIL_BACKEND
-        value: smtp   # KingHost testado e confirmado; deixe "console" se quiser suspender envios
+        value: smtp   # deixe "console" se quiser suspender envios
       - key: EMAIL_FROM
-        value: Casa Sognatto <naoresponda@casasognatto.com.br>
+        value: Casa Sognatto <casasognatto@gmail.com>   # 14/07/2026: trocado do naoresponda@ (KingHost) pro Gmail de uso da empresa
       - key: SMTP_HOST
-        value: smtpi.kinghost.net   # "i" de internacional — o Render roda fora do Brasil, smtp.kinghost.net (sem i) e so pra conexao domestica
+        value: smtp.gmail.com
       - key: SMTP_PORT
-        value: "465"
+        value: "587"   # STARTTLS — porta recomendada do Gmail (465/SSL também funciona se preferir)
       - key: SMTP_USER
-        value: naoresponda@casasognatto.com.br
+        value: casasognatto@gmail.com
       - key: SMTP_PASSWORD
-        sync: false   # SEGREDO — senha da caixa naoresponda@; defina no painel do Render, nunca versionar
+        sync: false   # SEGREDO — precisa ser uma "Senha de app" do Gmail (NÃO a senha normal da
+        # conta). Gerar em myaccount.google.com/apppasswords (exige verificação em 2 etapas
+        # ativada na conta). Cole o valor de 16 caracteres aqui no painel do Render, nunca
+        # versionar. Se a verificação em 2 etapas não estiver ativada, ative primeiro — sem
+        # ela o Google nem mostra a opção de gerar senha de app.
       - key: GOOGLE_API_KEY
         sync: false   # Nano Banana (geração de imagem), via Gemini API
       - key: PUBLIC_BASE_URL
