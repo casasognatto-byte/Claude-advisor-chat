@@ -102,6 +102,12 @@ textarea, select {
 }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-border); }
 input::placeholder, textarea::placeholder { color: var(--muted); }
+/* A lista de opções de um <select> é renderizada pelo navegador como uma
+   janela nativa opaca — não herda transparência/glassmorphism. Sem cor
+   explícita aqui, o Chrome usa fundo branco padrão com texto claro por
+   cima (ilegível). --bg-800 é sólido de propósito, ao contrário do
+   --glass-bg-soft usado no <select> fechado. */
+select option { background: var(--bg-800); color: var(--text); }
 
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
