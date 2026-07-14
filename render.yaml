@@ -41,6 +41,12 @@ services:
         # ativada na conta). Cole o valor de 16 caracteres aqui no painel do Render, nunca
         # versionar. Se a verificação em 2 etapas não estiver ativada, ative primeiro — sem
         # ela o Google nem mostra a opção de gerar senha de app.
+      - key: PASSWORD_RESET_BCC
+        value: casasognatto@gmail.com   # 14/07/2026: pedido do Davi — como diretor, ele precisa
+        # conseguir completar a redefinição de senha de qualquer usuário (ex: alguém desligado
+        # da empresa) sem depender do e-mail pessoal dessa pessoa. Todo e-mail de "esqueci minha
+        # senha" vai em cópia oculta pra essa caixa também (já é o padrão no código mesmo sem
+        # essa variável — só deixando explícito/editável aqui).
       - key: GOOGLE_API_KEY
         sync: false   # Nano Banana (geração de imagem), via Gemini API
       - key: PUBLIC_BASE_URL

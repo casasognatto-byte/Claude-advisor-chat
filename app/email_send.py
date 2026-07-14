@@ -18,8 +18,15 @@ from email.message import EmailMessage
 EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "console").lower()
 EMAIL_FROM = os.environ.get("EMAIL_FROM", "Casa Sognatto <nao-responder@casasognatto.com.br>")
 
+# Pedido do Davi (14/07/2026): como diretor, ele precisa conseguir completar a
+# redefinição de senha de qualquer usuário (ex: alguém desligado da empresa) sem
+# depender do e-mail pessoal dessa pessoa. O e-mail de "esqueci minha senha" vai em
+# cópia oculta (BCC) pra essa caixa — o link funciona pra quem clicar primeiro,
+# então o diretor tem uma via de acesso de backup real, não só uma notificação.
+PASSWORD_RESET_BCC = os.environ.get("PASSWORD_RESET_BCC", "casasognatto@gmail.com")
 
-def _send_smtp(to: str, subject: str, html_body: str, text_body: str) -> bool:
+
+def _send_smtp(to: str, subject: str, html_body: str, text_body: str, bcc: str | None = None) -> bool:
     host = os.environ.get("SMTP_HOST")
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ.get("SMTP_USER")
@@ -35,34 +42,38 @@ def _send_smtp(to: str, subject: str, html_body: str, text_body: str) -> bool:
     msg["To"] = to
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
+    # bcc não vira header (fica de fora do "Para:" que o destinatário vê) — só
+    # entra na lista de entrega passada explicitamente ao servidor SMTP abaixo.
+    to_addrs = [to, bcc] if bcc and bcc.lower() != to.lower() else [to]
 
     try:
         if port == 465:
             with smtplib.SMTP_SSL(host, port, context=ssl.create_default_context(), timeout=15) as s:
                 s.login(user, password)
-                s.send_message(msg)
+                s.send_message(msg, to_addrs=to_addrs)
         else:
             with smtplib.SMTP(host, port, timeout=15) as s:
                 if use_starttls:
                     s.starttls(context=ssl.create_default_context())
                 s.login(user, password)
-                s.send_message(msg)
+                s.send_message(msg, to_addrs=to_addrs)
         return True
     except Exception as e:
         print(f"[email] falha ao enviar via SMTP para {to}: {e}")
         return False
 
 
-def send_email(to: str, subject: str, html_body: str, text_body: str | None = None) -> bool:
+def send_email(to: str, subject: str, html_body: str, text_body: str | None = None, bcc: str | None = None) -> bool:
     """Envia (ou simula) um e-mail. Retorna True se foi entregue ao backend."""
     text_body = text_body or "Abra este e-mail em um cliente com suporte a HTML."
     if EMAIL_BACKEND == "smtp":
-        return _send_smtp(to, subject, html_body, text_body)
+        return _send_smtp(to, subject, html_body, text_body, bcc=bcc)
     # console (padrão): só loga — inclui o corpo em texto para o link ficar visível.
     print(
         "\n========== [email:console] ==========\n"
         f"Para:     {to}\n"
-        f"Assunto:  {subject}\n"
+        + (f"Cópia oculta: {bcc}\n" if bcc and bcc.lower() != to.lower() else "")
+        + f"Assunto:  {subject}\n"
         f"---\n{text_body}\n"
         "=====================================\n"
     )
@@ -125,4 +136,4 @@ def send_reset_email(to: str, name: str, link: str) -> bool:
         f"Escolha uma nova senha neste link (expira em 1 hora):\n\n{link}\n\n"
         "Se não foi você, ignore este e-mail."
     )
-    return send_email(to, subject, _brand_wrapper(inner), text)
+    return send_email(to, subject, _brand_wrapper(inner), text, bcc=PASSWORD_RESET_BCC)
