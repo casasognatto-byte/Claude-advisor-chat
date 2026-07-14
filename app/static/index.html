@@ -310,7 +310,7 @@
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
           <button id="send">Enviar</button>
-          <button id="generateAllBtn" style="display:none;" title="Gera de uma vez os renders de todos os ambientes já enviados deste cliente">Gerar renders</button>
+          <button id="generateAllBtn" style="display:none;" title="Gera de uma vez os renders de todos os ambientes já enviados deste cliente">Gerar</button>
         </div>
       </div>
       <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas aprofundadas aparecem em dourado.</div>
@@ -1223,7 +1223,6 @@
     const count = queuedConvIdsForClient(clientId).length;
     btn.style.display = "inline-block";
     btn.disabled = count === 0;
-    btn.textContent = count ? `Gerar renders (${count})` : "Gerar renders";
   }
 
   document.getElementById("generateAllBtn").addEventListener("click", async () => {
