@@ -1321,6 +1321,10 @@ def get_deck(project_id: str, request: Request):
             cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
             cover_row = cur.fetchone()
             has_cover = bool(cover_row and cover_row[0])
+            # Última imagem de Abertura leva o nome do cliente escrito por
+            # cima (ver _opening_client_name_png) — não o arquivo cru.
+            if abertura:
+                abertura[-1]["fileUrl"] = f"/api/presentations/{project_id}/opening-client-name.png"
 
         cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name, ce.id"), (project_id,))
         ambientes = []
@@ -1422,6 +1426,33 @@ def _render_environment_cover(cover_bytes: bytes, env_name: str, page_size: tupl
     return img
 
 
+def _opening_client_name_png(cur, template_id: str, client_name: str) -> bytes | None:
+    """Última imagem de Abertura, com o nome do cliente escrito por cima —
+    mesmo mecanismo da capa de ambiente (_render_environment_cover), reaproveitado
+    aqui. Pedido do Davi (14/07/2026): a arte da última Abertura tinha o texto
+    fixo "NOME DO CLIENTE" desenhado pelo designer; agora o slide guardado é só
+    o fundo (sem esse texto) e o nome real do cliente, digitado no botão "+ Novo
+    cliente", é escrito dinamicamente em cima — sem precisar editar a arte pra
+    cada projeto novo."""
+    from app import storage
+
+    cur.execute(
+        "SELECT storage_key FROM institutional_slides WHERE template_id = %s AND is_closing = false "
+        "ORDER BY sort_order DESC LIMIT 1",
+        (template_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    bg_bytes = storage.get(row[0])
+    if bg_bytes is None:
+        return None
+    img = _render_environment_cover(bg_bytes, client_name, _TV_PX)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 @router.get("/{project_id}/environments/{environment_id}/cover.png")
 def get_environment_cover(project_id: str, environment_id: str, request: Request):
     """Gera na hora a capa daquele ambiente (fundo do modelo + nome do
@@ -1459,6 +1490,33 @@ def get_environment_cover(project_id: str, environment_id: str, request: Request
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.get("/{project_id}/opening-client-name.png")
+def get_opening_client_name_slide(project_id: str, request: Request):
+    """Última imagem de Abertura, com o nome do cliente escrito por cima —
+    usada como fileUrl do último slide de abertura no /deck (visualizador
+    animado). Ver _opening_client_name_png."""
+    from fastapi.responses import Response
+
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT client_name, template_id FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+        client_name, template_id = project
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+        png = _opening_client_name_png(cur, template_id, client_name) if template_id else None
+    if png is None:
+        raise HTTPException(404, "Slide de abertura não disponível.")
+    return Response(content=png, media_type="image/png")
 
 
 @router.get("/{project_id}/deck.pdf")
@@ -1509,11 +1567,19 @@ def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
         raise HTTPException(400, "Este projeto ainda não tem slides para exportar.")
 
     cover_bytes = storage.get(cover_key) if cover_key else None
+    client_name = project[0]
 
     images = []
-    for storage_key in abertura_keys:
+    # Última imagem de Abertura leva o nome do cliente escrito por cima
+    # (mesmo mecanismo da capa de ambiente) em vez do arquivo cru.
+    last_abertura_idx = len(abertura_keys) - 1
+    for i, storage_key in enumerate(abertura_keys):
         data = storage.get(storage_key)
-        if data is not None:
+        if data is None:
+            continue
+        if i == last_abertura_idx:
+            images.append(_render_environment_cover(data, client_name, page_size))
+        else:
             images.append(_fit_to_page(_open_slide_image(data), page_size))
 
     last_env_id = object()  # sentinel: nunca bate com um id de verdade nem com None
@@ -1623,6 +1689,10 @@ def get_shared_deck(token: str):
             cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
             cover_row = cur.fetchone()
             has_cover = bool(cover_row and cover_row[0])
+            # Última imagem de Abertura leva o nome do cliente escrito por
+            # cima (ver _opening_client_name_png) — não o arquivo cru.
+            if abertura:
+                abertura[-1]["fileUrl"] = f"/api/presentations/share/{token}/opening-client-name.png"
 
         cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name, ce.id"), (project_id,))
         ambientes = []
@@ -1675,6 +1745,31 @@ def get_shared_environment_cover(token: str, environment_id: str):
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return Response(content=buf.getvalue(), media_type="image/png")
+
+
+@router.get("/share/{token}/opening-client-name.png")
+def get_shared_opening_client_name_slide(token: str):
+    """Variante sem login do /opening-client-name.png, pro link público —
+    ver _opening_client_name_png."""
+    from fastapi.responses import Response
+
+    from app.main import DB_ENABLED, _db
+
+    if not DB_ENABLED:
+        raise HTTPException(404, "Apresentação não encontrada.")
+    with _db() as conn, conn.cursor() as cur:
+        project = _project_by_share_token(cur, token)
+        if not project:
+            raise HTTPException(404, "Link inválido.")
+        _project_id, client_name, template_id = project
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+        png = _opening_client_name_png(cur, template_id, client_name) if template_id else None
+    if png is None:
+        raise HTTPException(404, "Slide de abertura não disponível.")
+    return Response(content=png, media_type="image/png")
 
 
 @router.get("/share/{token}/slide/{slide_id}/file")
