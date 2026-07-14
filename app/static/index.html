@@ -283,7 +283,7 @@
       <div class="h-left">
         <div class="tokens">
           Executor: <b><span id="tok-exec-in">0</span></b> / <b><span id="tok-exec-out">0</span></b><br>
-          <span class="g">Advisor:</span> <b><span id="tok-adv-in">0</span></b> / <b><span id="tok-adv-out">0</span></b>
+          <span class="g">Consultoria:</span> <b><span id="tok-adv-in">0</span></b> / <b><span id="tok-adv-out">0</span></b>
         </div>
         <button class="toggle" id="inspectorToggle" title="Inspetor de render">🎛</button>
         <a class="toggle" id="adminLinkTop" href="/admin" title="Painel do diretor" style="display:none; text-decoration:none;">⚙</a>
@@ -306,7 +306,7 @@
           <button id="send">Enviar</button>
         </div>
       </div>
-      <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas ao advisor aparecem em dourado.</div>
+      <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas aprofundadas aparecem em dourado.</div>
     </footer>
   </div>
 
@@ -783,7 +783,7 @@
       r.appendChild(av); r.appendChild(b); chat.appendChild(r);
     } else if (item.type === "advisor") {
       const box = document.createElement("div"); box.className = "advisor";
-      const l = document.createElement("div"); l.className = "label"; l.textContent = "🔑 Advisor consultado";
+      const l = document.createElement("div"); l.className = "label"; l.textContent = "🔑 Consulta aprofundada";
       box.appendChild(l); chat.appendChild(box);
     } else if (item.type === "error") {
       const r = document.createElement("div"); r.className = "msg assistant error";
@@ -877,7 +877,7 @@
     const c = active();
     if (!c || !c.data || c.data.view.length === 0) {
       const e = document.createElement("div"); e.className = "empty";
-      e.innerHTML = '<div class="key">🔑</div>Comece uma nova conversa.<br>Pergunte algo — o advisor entra nos momentos estratégicos.';
+      e.innerHTML = '<div class="key">🔑</div>Comece uma nova conversa.<br>Pergunte algo — o Sogno aprofunda a análise nos momentos estratégicos.';
       chat.appendChild(e);
     } else {
       for (const item of c.data.view) renderItem(item);
@@ -1742,8 +1742,8 @@
     await loadOwnerFilter();
     await loadTree();
     document.getElementById("hint").textContent = Store.mode === "remote"
-      ? "Histórico compartilhado entre a equipe · consultas ao advisor aparecem em dourado."
-      : "Histórico salvo neste computador · consultas ao advisor aparecem em dourado.";
+      ? "Histórico compartilhado entre a equipe · consultas aprofundadas aparecem em dourado."
+      : "Histórico salvo neste computador · consultas aprofundadas aparecem em dourado.";
     // Sidebar começa aberta em telas grandes, recolhida (modo overlay) em celular.
     if (window.innerWidth >= 769) document.body.classList.remove("collapsed");
     if (!conversations.length) { newConv(); }
