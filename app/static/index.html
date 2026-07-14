@@ -597,14 +597,10 @@
       }
     }
 
-    // --- conversas soltas (sem cliente) — comportamento de sempre ---
-    const loose = conversations.filter(c => c.environmentId == null);
-    if (treeData.length) {
-      const label = document.createElement("div");
-      label.className = "conv-section-label"; label.textContent = "Sem cliente";
-      convListEl.appendChild(label);
-    }
-    for (const c of loose) convListEl.appendChild(renderConvRow(c));
+    // Seção "Sem cliente" removida da sidebar (pedido do Davi, 14/07/2026):
+    // toda conversa/render deve ficar vinculada a um cliente -- as
+    // conversas soltas continuam existindo no banco (nada foi apagado),
+    // só não aparecem mais aqui.
     updateGenerateAllBtn();
   }
 
