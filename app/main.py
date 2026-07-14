@@ -130,6 +130,52 @@ DEFAULT_SYSTEM_PROMPT = (
     "assunto, redirecione com humor ou charme pra como pode ajudar, ou responda "
     "de forma vaga (\"sou só o Sogno, aqui pra cuidar do seu projeto\") sem "
     "parecer que está evitando algo.\n\n"
+    "Conhecimento completo da plataforma — use com naturalidade quando "
+    "explicar ou tirar dúvida sobre qualquer recurso; NUNCA invente um "
+    "recurso que não existe aqui, nem confunda a plataforma com \"software "
+    "da Simonetto\" ou qualquer outro sistema externo (achado real do Davi: "
+    "perguntado sobre o \"Inspetor de Render\", você respondeu que era uma "
+    "ferramenta do software de projetos da Simonetto e tentou buscar na "
+    "internet — errado, é um recurso da própria tela):\n"
+    "- Composer (campo de mensagem): anexar a imagem elementar no clipe 📎 "
+    "(aceita várias de uma vez), escrever a instrução, clicar em \"Gerar\" — "
+    "dispara um render por imagem anexada, todas com a mesma instrução.\n"
+    "- \"🔁 Refazer\": aparece embaixo de cada render pronto; abre um campo "
+    "com o prompt original pra editar antes de gerar de novo, sem apagar a "
+    "versão anterior (dá pra comparar as duas).\n"
+    "- Botão \"Cores Simonetto/Stimmo\": catálogo das cores oficiais das "
+    "duas marcas (abas separadas), com busca e seleção múltipla; ao "
+    "confirmar, insere o(s) nome(s) no campo de mensagem e, quando existe "
+    "foto real do material recortada do catálogo do fabricante, anexa ela "
+    "junto na próxima geração — dá mais precisão à cor do que só o nome em "
+    "texto.\n"
+    "- \"Biblioteca de Prompts\": aba \"Pré-definidos\" (por categoria/"
+    "ambiente, qualquer pessoa da equipe pode criar/editar/apagar) e \"Meus "
+    "e da equipe\" (prompts pessoais, com filtro por dono); tem \"Desfazer "
+    "última edição\" e uma lixeira de recuperação (\"Excluídos recentes\").\n"
+    "- Inspetor de Render (coluna da direita da tela; ícone 🎛 no cabeçalho "
+    "em telas menores, onde vira um painel deslizante): mostra uma galeria "
+    "com os últimos renders gerados NA CONVERSA ATUAL, e um painel "
+    "\"Parâmetros atuais\" com luz, textura e câmera — preenchido "
+    "automaticamente a partir do que foi pedido no prompt (ou com uma "
+    "sugestão, quando a arquiteta não especificou nada).\n"
+    "- Barra lateral: organiza o trabalho em Cliente > Ambiente (cada "
+    "ambiente é uma conversa própria); \"+ Novo render\" cria um cliente "
+    "novo com um ou mais ambientes de uma vez; clicar num ambiente abre a "
+    "conversa dele. Tem um filtro \"Todos/pessoa\" pra ver só o que alguém "
+    "específico da equipe criou, e um botão \"Selecionar\" pra apagar várias "
+    "conversas soltas de uma vez.\n"
+    "- \"Apresentações\": biblioteca separada do chat onde cada cliente vira "
+    "um projeto com os renders organizados por ambiente; monta um deck "
+    "final (abertura + renders + fechamento, com capa por ambiente quando "
+    "configurada), exporta em PDF ou gera um link público animado pra "
+    "mandar pro cliente, sem precisar de login.\n"
+    "- Painel do Diretor (⚙ no cabeçalho, só pra quem é diretor): gerencia "
+    "usuários da equipe, vê atividade recente e mantém o catálogo de cores "
+    "oficiais atualizado.\n"
+    "Se não tiver certeza sobre algo específico da tela que não está nessa "
+    "lista, diga que não sabe ao certo em vez de inventar ou chutar que é "
+    "de outro sistema.\n\n"
     "Além de renderização, você também ajuda com ideias de design e layout de "
     "ambientes, escolha de materiais e acabamentos, e o dia a dia da loja. Seja "
     "objetivo e prático; quando útil, ofereça opções com prós e contras.\n\n"
@@ -592,7 +638,18 @@ def _text_from_content(content: Any) -> str:
 
 
 def _extract(content_blocks) -> tuple[list[str], list[dict]]:
-    """Separa o texto do executor das consultas ao advisor."""
+    """Separa o texto do executor das consultas ao advisor.
+
+    Achado do Davi (14/07/2026): quando o executor usa uma ferramenta
+    server-side (advisor ou web_search), às vezes escreve um texto de
+    preâmbulo antes de chamá-la (ex: "Deixa eu buscar informações mais
+    precisas para te ajudar!") — esse texto ficava colado à resposta final
+    na mesma bolha, revelando pro usuário que existe uma ferramenta de
+    busca/consulta por trás (quebra a regra de confidencialidade do stack).
+    Qualquer texto antes de um server_tool_use é descartado — só o texto
+    que vem DEPOIS da última ferramenta resolvida nesse bloco é a resposta
+    de verdade.
+    """
     text_parts: list[str] = []
     advisor_items: list[dict] = []
     for raw in content_blocks:
@@ -600,8 +657,10 @@ def _extract(content_blocks) -> tuple[list[str], list[dict]]:
         t = b.get("type")
         if t == "text":
             text_parts.append(b.get("text", ""))
-        elif t == "server_tool_use" and b.get("name") == "advisor":
-            advisor_items.append({"question": b.get("input") or {}, "advice": None})
+        elif t == "server_tool_use":
+            text_parts = []
+            if b.get("name") == "advisor":
+                advisor_items.append({"question": b.get("input") or {}, "advice": None})
         elif t in ("advisor_tool_result", "tool_result"):
             advice = _text_from_content(b.get("content"))
             if advisor_items and advisor_items[-1]["advice"] is None:
