@@ -174,6 +174,11 @@
   .prompt-item { text-align: left; background: var(--glass-bg-soft); border: 1px solid transparent; border-radius: var(--radius-sm); padding: 9px 11px; cursor: pointer; color: var(--text); font-size: 12.5px; }
   .prompt-item:hover { border-color: var(--accent-border); }
   .prompt-item .cat { display: block; font-size: 10.5px; color: var(--muted); margin-top: 3px; }
+  .prompt-row { display: flex; align-items: stretch; gap: 4px; }
+  .prompt-row .prompt-item { flex: 1; min-width: 0; }
+  .prompt-row .del { flex: none; opacity: .55; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 8px; border-radius: 6px; }
+  .prompt-row:hover .del { opacity: .8; }
+  .prompt-row .del:hover { opacity: 1; color: var(--danger); background: rgba(224,121,107,.1); }
   .prompts-edit-col { flex: 1; padding: 16px 20px; display: flex; flex-direction: column; overflow-y: auto; }
   .prompts-edit-col label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; text-transform: uppercase; letter-spacing: .04em; }
   .prompts-edit-col label:first-child { margin-top: 0; }
@@ -1331,7 +1336,21 @@
       const ownerTag = kind === "personal" ? ` · ${escapeHtml(p.owner)}` : "";
       btn.innerHTML = `${escapeHtml(p.name)}<span class="cat">${escapeHtml(p.category || "Sem categoria")}${ownerTag}</span>`;
       btn.addEventListener("click", () => selectPrompt(kind, p));
-      promptsListEl.appendChild(btn);
+      if (kind === "predefined") {
+        // Pedido do Davi: ícone de lixeira na frente do nome, mesmo padrão
+        // já usado nas linhas de cliente da sidebar — em vez do botão
+        // "Apagar padrão" separado no painel de edição.
+        const row = document.createElement("div");
+        row.className = "prompt-row";
+        row.appendChild(btn);
+        const del = document.createElement("button");
+        del.className = "del"; del.type = "button"; del.title = "Apagar prompt padrão"; del.textContent = "🗑";
+        del.addEventListener("click", (e) => { e.stopPropagation(); deletePredefinedPrompt(p.id); });
+        row.appendChild(del);
+        promptsListEl.appendChild(row);
+      } else {
+        promptsListEl.appendChild(btn);
+      }
     }
   }
 
@@ -1422,7 +1441,8 @@
       addBtn("↩ Desfazer última edição", "", () => undoPrompt(promptsSelected.kind, promptsSelected.id));
     }
     if (isOwnPersonal) addBtn("Apagar meu prompt", "danger", () => deletePersonalPrompt(promptsSelected.id));
-    if (isPredefined) addBtn("Apagar padrão", "danger", () => deletePredefinedPrompt(promptsSelected.id));
+    // Apagar um prompt padrão agora é só pelo ícone 🗑 na lista (ver
+    // renderPromptsList) — mesmo padrão das linhas de cliente da sidebar.
   }
 
   async function undoPrompt(kind, id) {
@@ -1515,7 +1535,12 @@
       const res = await fetch(`/api/prompts/predefined/${id}`, { method: "DELETE" });
       if (res.status === 401) { window.location.href = "/login"; return; }
       if (!res.ok) { promptsMsgEl.textContent = "Não foi possível apagar."; return; }
-      clearPromptForm();
+      // Só limpa o formulário se era exatamente o prompt apagado que estava
+      // aberto pra edição — apagar um item pela lixeira da lista não deve
+      // descartar o que a pessoa estava editando em outro prompt.
+      if (promptsSelected && promptsSelected.kind === "predefined" && promptsSelected.id === id) {
+        clearPromptForm();
+      }
       await refreshPromptsList();
     } catch (_) { promptsMsgEl.textContent = "Erro de conexão."; }
   }
