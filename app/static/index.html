@@ -55,6 +55,8 @@
   .env-row .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; }
   .env-row:hover .del { opacity: .8; }
   .env-row .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
+  .env-row.queued { color: var(--text); }
+  .env-row .queued-badge { flex: none; color: var(--accent); font-size: 12px; font-weight: 700; }
   .env-add-row { display: flex; align-items: center; gap: 6px; padding: 7px 10px; color: var(--muted); font-size: 12px; cursor: pointer; border-radius: var(--radius-sm); border: 1px dashed var(--glass-border); background: none; width: 100%; text-align: left; font-family: inherit; }
   .env-add-row:hover { color: var(--accent-soft); border-color: var(--accent-border); }
   .new-client-row { display: flex; align-items: center; gap: 8px; }
@@ -113,8 +115,9 @@
   .staged-chip { display: flex; align-items: center; gap: 6px; background: var(--accent-dim); border: 1px solid var(--accent-border); border-radius: 20px; padding: 5px 6px 5px 12px; font-size: 12px; color: var(--text); }
   .staged-chip .remove { cursor: pointer; color: var(--muted); background: none; border: none; font-size: 14px; line-height: 1; padding: 2px 4px; border-radius: 50%; }
   .staged-chip .remove:hover { color: var(--danger); background: rgba(255,255,255,.08); }
-  #generateBtn { flex: none; background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); padding: 11px 18px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
-  #generateBtn:hover { background: var(--accent-soft); }
+  #generateAllBtn { flex: none; background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); padding: 11px 18px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  #generateAllBtn:hover:not(:disabled) { background: var(--accent-soft); }
+  #generateAllBtn:disabled { opacity: .45; cursor: default; }
 
   .render-card { max-width: 92%; background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: var(--radius-md); padding: 14px; }
   .render-card .status { font-size: 13px; color: var(--muted); font-style: italic; }
@@ -306,8 +309,8 @@
         <div class="composer">
           <textarea id="input" rows="1" placeholder="Descreva o render que você imagina… (Enter envia, Shift+Enter quebra linha)"></textarea>
           <input type="file" id="imageFile" accept="image/*" multiple style="display:none;" />
-          <button id="generateBtn" style="display:none;">Gerar</button>
           <button id="send">Enviar</button>
+          <button id="generateAllBtn" style="display:none;" title="Gera de uma vez os renders de todos os ambientes já enviados deste cliente">Gerar renders</button>
         </div>
       </div>
       <div class="hint" id="hint">A chave da API fica protegida no servidor · consultas aprofundadas aparecem em dourado.</div>
@@ -566,10 +569,13 @@
       const envList = document.createElement("div");
       envList.className = "env-list";
       for (const env of visibleEnvs) {
+        const isQueued = Array.from(queuedByConv.values()).some((q) => q.environmentId === env.id);
         const eRow = document.createElement("div");
-        eRow.className = "env-row" + (activeEnvironmentId === env.id ? " active" : "");
+        eRow.className = "env-row" + (activeEnvironmentId === env.id ? " active" : "") + (isQueued ? " queued" : "");
         eRow.dataset.id = env.id;
-        eRow.innerHTML = '<span class="drag-handle">⠿</span><span class="name"></span><button class="del" title="Apagar ambiente">🗑</button>';
+        eRow.innerHTML = '<span class="drag-handle">⠿</span><span class="name"></span>' +
+          (isQueued ? '<span class="queued-badge" title="Render enviado, aguardando \'Gerar renders\'">✓</span>' : "") +
+          '<button class="del" title="Apagar ambiente">🗑</button>';
         eRow.querySelector(".name").textContent = env.name;
         eRow.title = "Clique duplo para renomear";
         eRow.addEventListener("click", () => openEnvironment(env.id));
@@ -599,6 +605,7 @@
       convListEl.appendChild(label);
     }
     for (const c of loose) convListEl.appendChild(renderConvRow(c));
+    updateGenerateAllBtn();
   }
 
   // ---------- Árvore cliente/ambiente: arrastar-e-soltar + CRUD ----------
@@ -974,6 +981,16 @@
   }
 
   async function send() {
+    // Arquivo(s) anexado(s): "Enviar" aqui não é uma mensagem de chat -- é a
+    // confirmação do render deste ambiente (ver queueEnvironmentRender).
+    // Fora de um ambiente da árvore Cliente > Ambiente (conversa solta), não
+    // há "Gerar renders" pra disparar depois, então mantém o comportamento
+    // antigo: gera na hora.
+    const staged = getStagedEntry(false);
+    if (staged.files.length) {
+      if (activeEnvironmentId) queueEnvironmentRender(); else await generateStagedNow();
+      return;
+    }
     const text = input.value.trim(); if (!text) return;
     let c = active(); if (!c) { newConv(); c = active(); }
     await ensureData(c);
@@ -1023,6 +1040,10 @@
   // como referência visual real (swatch) na próxima geração — escopado por
   // conversa pelo mesmo motivo dos arquivos acima.
   let stagedColorsByConv = new Map(); // conversationId -> [{id, name, brandLabel}]
+  // Ambientes já "enviados" (imagem + cor + prompt prontos), aguardando o
+  // clique em "Gerar renders" pra disparar todos de uma vez -- ver
+  // queueEnvironmentRender/"Gerar renders" mais abaixo.
+  let queuedByConv = new Map(); // conversationId -> { environmentId, files, colorRefs, prompt }
 
   function getStagedColors() {
     return activeId ? (stagedColorsByConv.get(activeId) || []) : [];
@@ -1040,14 +1061,12 @@
   function renderStagedRow() {
     const row = document.getElementById("stagedRow");
     const tools = document.getElementById("stagedTools");
-    const genBtn = document.getElementById("generateBtn");
     row.innerHTML = ""; tools.innerHTML = "";
     const entry = getStagedEntry(false);
     const stagedColors = getStagedColors();
     if (!entry.files.length) {
       row.style.display = "none";
       tools.style.display = "none";
-      genBtn.style.display = "none";
       stagedSelectMode = false; stagedSelectedIdx.clear();
       // Cor sem imagem elementar anexada não tem o que gerar — mantém a
       // seleção guardada (não descarta), só não mostra a fileira ainda.
@@ -1055,8 +1074,6 @@
     }
     row.style.display = "flex";
     tools.style.display = "flex";
-    genBtn.style.display = "inline-block";
-    genBtn.textContent = "Gerar";
 
     const selBtn = document.createElement("button");
     selBtn.type = "button"; selBtn.className = "sel-toggle";
@@ -1148,7 +1165,10 @@
     renderStagedRow();
   }
 
-  document.getElementById("generateBtn").addEventListener("click", async () => {
+  // Conversa solta (sem cliente/ambiente): não tem "Gerar renders" pra
+  // acumular depois, então "Enviar" com arquivo anexado gera na hora, como
+  // sempre foi.
+  async function generateStagedNow() {
     const entry = getStagedEntry(false);
     if (!entry.files.length) return;
     const files = entry.files;
@@ -1161,20 +1181,88 @@
     const prompt = input.value.trim();
     input.value = ""; autosize();
     await Promise.all(files.map((file) => startImageJob(file, prompt, colorRefs)));
+  }
+
+  // Dentro de um ambiente da árvore Cliente > Ambiente: "Enviar" só guarda
+  // arquivo(s) + cor + prompt daquele ambiente (queuedByConv), sem chamar a
+  // API ainda -- pedido do Davi (14/07/2026): a arquiteta prepara ambiente
+  // por ambiente e só no fim manda gerar tudo de uma vez, em vez de esperar
+  // cada render terminar pra passar pro próximo. Ver "Gerar renders".
+  function queueEnvironmentRender() {
+    const entry = getStagedEntry(false);
+    if (!entry.files.length) return;
+    const colorRefs = getStagedColors().map((c) => ({ id: c.id, target: c.target || "" }));
+    const promptText = input.value.trim();
+    queuedByConv.set(activeId, { environmentId: activeEnvironmentId, files: entry.files, colorRefs, prompt: promptText });
+    stagedByConv.delete(activeId); stagedColorsByConv.delete(activeId);
+    input.value = ""; autosize();
+    renderStagedRow(); renderList();
+  }
+
+  function currentClientId() {
+    if (!activeEnvironmentId) return null;
+    for (const client of treeData) {
+      if (client.environments.some((e) => e.id === activeEnvironmentId)) return client.id;
+    }
+    return null;
+  }
+
+  function queuedConvIdsForClient(clientId) {
+    const client = treeData.find((c) => c.id === clientId);
+    if (!client) return [];
+    const envIds = new Set(client.environments.map((e) => e.id));
+    const ids = [];
+    for (const [convId, q] of queuedByConv) if (envIds.has(q.environmentId)) ids.push(convId);
+    return ids;
+  }
+
+  function updateGenerateAllBtn() {
+    const btn = document.getElementById("generateAllBtn");
+    const clientId = currentClientId();
+    if (!clientId) { btn.style.display = "none"; return; }
+    const count = queuedConvIdsForClient(clientId).length;
+    btn.style.display = "inline-block";
+    btn.disabled = count === 0;
+    btn.textContent = count ? `Gerar renders (${count})` : "Gerar renders";
+  }
+
+  document.getElementById("generateAllBtn").addEventListener("click", async () => {
+    const clientId = currentClientId();
+    if (!clientId) return;
+    const convIds = queuedConvIdsForClient(clientId);
+    if (!convIds.length) return;
+    const jobs = [];
+    for (const convId of convIds) {
+      const q = queuedByConv.get(convId);
+      queuedByConv.delete(convId);
+      for (const file of q.files) jobs.push(startImageJob(file, q.prompt, q.colorRefs, convId));
+    }
+    renderList(); updateGenerateAllBtn();
+    await Promise.all(jobs);
   });
 
   // ---------- Geração de imagem (ícone no composer) ----------
-  async function startImageJob(file, prompt, colorRefs) {
-    let c = active(); if (!c) { newConv(); c = active(); }
+  // targetConvId: usado pelo "Gerar renders" pra disparar num ambiente que
+  // não é necessariamente o que está aberto na tela agora -- só mexe no DOM
+  // do chat se for a conversa ativa; as outras só atualizam o estado
+  // persistido (aparece certinho quando a arquiteta abrir aquele ambiente).
+  async function startImageJob(file, prompt, colorRefs, targetConvId) {
+    let c;
+    if (targetConvId) { c = conversations.find((x) => x.id === targetConvId); if (!c) return; }
+    else { c = active(); if (!c) { newConv(); c = active(); } }
     await ensureData(c);
+    const isActive = c.id === activeId;
 
     const item = { type: "image", jobId: null, status: "queued" };
     c.data.view.push(item);
-    if (c.data.view.length === 1) chat.innerHTML = ""; // tira o placeholder "Comece uma nova conversa"
-    const r = document.createElement("div"); r.className = "msg assistant";
-    const card = document.createElement("div"); card.className = "render-card";
-    renderImageCardBody(card, item);
-    r.appendChild(card); chat.appendChild(r); scrollDown();
+    let card = null;
+    if (isActive) {
+      if (c.data.view.length === 1) chat.innerHTML = ""; // tira o placeholder "Comece uma nova conversa"
+      const r = document.createElement("div"); r.className = "msg assistant";
+      card = document.createElement("div"); card.className = "render-card";
+      renderImageCardBody(card, item);
+      r.appendChild(card); chat.appendChild(r); scrollDown();
+    }
 
     const form = new FormData();
     form.append("image", file);
@@ -1198,8 +1286,7 @@
     } catch (e) {
       item.status = "error"; item.error = "Erro de conexão.";
     }
-    card.id = "image-" + item.jobId;
-    renderImageCardBody(card, item);
+    if (card) { card.id = "image-" + item.jobId; renderImageCardBody(card, item); }
     await persist(c);
     if (item.jobId && (item.status === "queued" || item.status === "processing")) pollImageJob(item.jobId, item, c);
   }
