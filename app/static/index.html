@@ -203,6 +203,7 @@
   .color-item input[type=checkbox] { flex: none; accent-color: var(--accent); }
   .color-item .name { flex: 1; min-width: 0; }
   .color-item .manuf { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; }
+  .color-item .swatch-thumb { flex: none; width: 22px; height: 22px; border-radius: 5px; object-fit: cover; border: 1px solid var(--glass-border); }
   .colors-side { width: 260px; flex: none; border-left: 1px solid var(--glass-border); padding: 16px 20px; display: flex; flex-direction: column; overflow-y: auto; }
   .colors-selected { display: flex; flex-wrap: wrap; gap: 6px; }
   .colors-selected .chip { font-size: 11.5px; padding: 5px 10px; }
@@ -1009,6 +1010,14 @@
   let stagedByConv = new Map(); // conversationId -> { kind: "image", files: [] }
   let stagedSelectMode = false;
   let stagedSelectedIdx = new Set();
+  // Cores oficiais selecionadas no modal "Cores Simonetto/Stimmo" pra anexar
+  // como referência visual real (swatch) na próxima geração — escopado por
+  // conversa pelo mesmo motivo dos arquivos acima.
+  let stagedColorsByConv = new Map(); // conversationId -> [{id, name, brandLabel}]
+
+  function getStagedColors() {
+    return activeId ? (stagedColorsByConv.get(activeId) || []) : [];
+  }
 
   function getStagedEntry(create) {
     if (!activeId) return { kind: null, files: [] };
@@ -1025,11 +1034,14 @@
     const genBtn = document.getElementById("generateBtn");
     row.innerHTML = ""; tools.innerHTML = "";
     const entry = getStagedEntry(false);
+    const stagedColors = getStagedColors();
     if (!entry.files.length) {
       row.style.display = "none";
       tools.style.display = "none";
       genBtn.style.display = "none";
       stagedSelectMode = false; stagedSelectedIdx.clear();
+      // Cor sem imagem elementar anexada não tem o que gerar — mantém a
+      // seleção guardada (não descarta), só não mostra a fileira ainda.
       return;
     }
     row.style.display = "flex";
@@ -1066,6 +1078,7 @@
     clearBtn.textContent = "Limpar tudo";
     clearBtn.addEventListener("click", () => {
       stagedByConv.delete(activeId);
+      stagedColorsByConv.delete(activeId);
       stagedSelectMode = false; stagedSelectedIdx.clear();
       renderStagedRow();
     });
@@ -1099,6 +1112,24 @@
       }
       row.appendChild(chip);
     });
+
+    stagedColors.forEach((color, idx) => {
+      const chip = document.createElement("span");
+      chip.className = "staged-chip";
+      chip.title = "Referência de cor oficial — anexada na geração";
+      const label = document.createElement("span");
+      label.textContent = `🎨 ${color.name}`;
+      chip.appendChild(label);
+      const rm = document.createElement("button");
+      rm.className = "remove"; rm.title = "Remover"; rm.textContent = "✕";
+      rm.addEventListener("click", () => {
+        stagedColors.splice(idx, 1);
+        if (!stagedColors.length) stagedColorsByConv.delete(activeId);
+        renderStagedRow();
+      });
+      chip.appendChild(rm);
+      row.appendChild(chip);
+    });
   }
 
   function stageFiles(kind, files) {
@@ -1112,18 +1143,19 @@
     const entry = getStagedEntry(false);
     if (!entry.files.length) return;
     const files = entry.files;
-    stagedByConv.delete(activeId); renderStagedRow();
+    const colorIds = getStagedColors().map((c) => c.id);
+    stagedByConv.delete(activeId); stagedColorsByConv.delete(activeId); renderStagedRow();
     // Le o prompt uma unica vez (era lido de novo a cada arquivo, e como o
     // campo era limpo logo em seguida, só a 1ª imagem recebia a instrução —
     // as demais geravam sem prompt nenhum). Dispara todas em paralelo em vez
     // de esperar uma terminar pra começar a próxima.
     const prompt = input.value.trim();
     input.value = ""; autosize();
-    await Promise.all(files.map((file) => startImageJob(file, prompt)));
+    await Promise.all(files.map((file) => startImageJob(file, prompt, colorIds)));
   });
 
   // ---------- Geração de imagem (ícone no composer) ----------
-  async function startImageJob(file, prompt) {
+  async function startImageJob(file, prompt, colorIds) {
     let c = active(); if (!c) { newConv(); c = active(); }
     await ensureData(c);
 
@@ -1139,6 +1171,7 @@
     form.append("image", file);
     form.append("prompt", prompt);
     form.append("conversation_id", c.id);
+    if (colorIds && colorIds.length) form.append("color_ids", colorIds.join(","));
 
     try {
       const res = await fetch("/api/image/jobs", { method: "POST", body: form });
@@ -1543,12 +1576,16 @@
       const div = document.createElement("div");
       const checked = colorsSelected.has(c.id);
       div.className = "color-item" + (checked ? " selected" : "");
+      const swatchBadge = c.swatchUrl
+        ? `<img class="swatch-thumb" src="${escapeHtml(c.swatchUrl)}" title="Foto real do material (referência precisa)" />`
+        : "";
       div.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} />` +
+        swatchBadge +
         `<span class="name">${escapeHtml(c.name)}${c.manufacturer ? `<span class="manuf">${escapeHtml(c.manufacturer)}</span>` : ""}</span>`;
       div.addEventListener("click", (e) => {
         e.preventDefault();
         if (colorsSelected.has(c.id)) colorsSelected.delete(c.id);
-        else colorsSelected.set(c.id, { name: c.name, brandLabel: c.brandLabel });
+        else colorsSelected.set(c.id, { name: c.name, brandLabel: c.brandLabel, hasSwatch: !!c.swatchUrl });
         renderColorsGrid();
         renderColorsSelected();
       });
@@ -1577,7 +1614,9 @@
 
   document.getElementById("colorsUseBtn").addEventListener("click", () => {
     if (!colorsSelected.size) { document.getElementById("colorsMsg").textContent = "Selecione ao menos uma cor."; return; }
-    const names = Array.from(colorsSelected.values()).map(v => v.name);
+    if (!activeId) { let c = active(); if (!c) { newConv(); } }
+    const entries = Array.from(colorsSelected.entries()); // [id, {name, brandLabel, hasSwatch}]
+    const names = entries.map(([, v]) => v.name);
     // Com 2+ cores, a aplicação de cada uma nos móveis é ambígua — em vez de
     // só listar os nomes, monta um modelo pra arquiteta preencher qual cor
     // vai em qual móvel antes de mandar (evita o Sogno ter que adivinhar).
@@ -1586,9 +1625,21 @@
       : "Cores de referência:\n" + names.map(n => `- ${n} no(s): ___`).join("\n");
     input.value = input.value ? input.value + "\n" + text : text;
     autosize();
+
+    // As cores com swatch real ficam "em espera" junto com a imagem elementar
+    // — na hora de "Gerar", o Sogno anexa a foto real do material como
+    // referência visual (mais precisão que só o nome em texto).
+    const withSwatch = entries.filter(([, v]) => v.hasSwatch).map(([id, v]) => ({ id, name: v.name, brandLabel: v.brandLabel }));
+    if (withSwatch.length && activeId) {
+      const existing = stagedColorsByConv.get(activeId) || [];
+      const existingIds = new Set(existing.map((c) => c.id));
+      stagedColorsByConv.set(activeId, existing.concat(withSwatch.filter((c) => !existingIds.has(c.id))));
+    }
+
     colorsSelected.clear();
     renderColorsSelected();
     closeColors();
+    renderStagedRow();
     input.focus();
   });
 

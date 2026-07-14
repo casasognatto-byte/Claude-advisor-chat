@@ -25,7 +25,9 @@ class ImageGenerationError(Exception):
 
 
 class StubImageEngine:
-    async def generate(self, image_bytes: bytes, mime: str, prompt: str) -> tuple[bytes, str]:
+    async def generate(
+        self, image_bytes: bytes, mime: str, prompt: str, reference_images: list[dict] | None = None
+    ) -> tuple[bytes, str]:
         import asyncio
 
         await asyncio.sleep(2)
@@ -50,26 +52,37 @@ class NanoBananaEngine:
             raise ImageGenerationError("GOOGLE_API_KEY não configurada.")
         return key
 
-    async def generate(self, image_bytes: bytes, mime: str, prompt: str) -> tuple[bytes, str]:
-        body = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": prompt
-                            or "Transforme esta imagem em um render fotorrealista, "
-                            "preservando composição, proporções e materiais indicados."
-                        },
-                        {
-                            "inline_data": {
-                                "mime_type": mime or "image/jpeg",
-                                "data": base64.b64encode(image_bytes).decode("ascii"),
-                            }
-                        },
-                    ]
+    async def generate(
+        self, image_bytes: bytes, mime: str, prompt: str, reference_images: list[dict] | None = None
+    ) -> tuple[bytes, str]:
+        parts = [
+            {
+                "text": prompt
+                or "Transforme esta imagem em um render fotorrealista, "
+                "preservando composição, proporções e materiais indicados."
+            },
+            {
+                "inline_data": {
+                    "mime_type": mime or "image/jpeg",
+                    "data": base64.b64encode(image_bytes).decode("ascii"),
                 }
-            ]
-        }
+            },
+        ]
+        # Fotos reais de swatch (recortadas do catálogo oficial do fabricante,
+        # ver app/materials.py) — dão ao modelo a cor/textura exata em vez de
+        # só o nome em texto, que ele podia interpretar de forma imprecisa.
+        for ref in reference_images or []:
+            parts.append({
+                "text": f"Referência exata de cor/material — {ref['name']} (linha {ref['brand']}). "
+                        "Aplique esta cor/textura precisamente onde a instrução acima indicar."
+            })
+            parts.append({
+                "inline_data": {
+                    "mime_type": ref.get("mime") or "image/png",
+                    "data": base64.b64encode(ref["bytes"]).decode("ascii"),
+                }
+            })
+        body = {"contents": [{"parts": parts}]}
         headers = {"x-goog-api-key": self._api_key(), "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=90) as client:
             resp = await client.post(

@@ -98,6 +98,10 @@ def init_image_db() -> None:
             # migração pra app.storage (08/07/2026), image_path virou uma chave
             # de storage (não mais um caminho de arquivo com extensão previsível).
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS image_mime TEXT;")
+            # 14/07/2026 — ids das cores oficiais (material_colors) usadas como
+            # referência visual nesse job, pra "Refazer" reaproveitar as mesmas
+            # sem a arquiteta precisar reabrir o modal de Cores.
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS color_ids TEXT;")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_jobs_user "
                 "ON image_jobs (username, created_at DESC);"
@@ -134,7 +138,7 @@ def _get_job(job_id: str) -> dict | None:
         cur.execute(
             "SELECT id, username, conversation_id, status, error_message, image_path, "
             "prompt, source_path, source_mime, engine, param_light, param_texture, param_camera, "
-            "image_mime "
+            "image_mime, color_ids "
             "FROM image_jobs WHERE id = %s",
             (job_id,),
         )
@@ -146,7 +150,7 @@ def _get_job(job_id: str) -> dict | None:
         "status": row[3], "error": row[4], "imagePath": row[5],
         "prompt": row[6], "sourcePath": row[7], "sourceMime": row[8], "engine": row[9],
         "paramLight": row[10], "paramTexture": row[11], "paramCamera": row[12],
-        "imageMime": row[13],
+        "imageMime": row[13], "colorIds": row[14],
     }
 
 
@@ -230,9 +234,12 @@ def _bridge_to_project_images(job_id: str, key: str, mime: str) -> None:
         )
 
 
-async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str) -> None:
+async def _run_image_job(
+    job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str, color_ids: list[str] | None = None
+) -> None:
     from app import storage
     from app.image_engines import ENGINES, ImageGenerationError
+    from app.materials import get_swatches
 
     impl = ENGINES.get(engine)
     try:
@@ -240,7 +247,10 @@ async def _run_image_job(job_id: str, image_bytes: bytes, mime: str, prompt: str
             raise ImageGenerationError(f"Engine desconhecido: {engine}")
         _update_job(job_id, status="processing")
         asyncio.create_task(_run_render_params(job_id, prompt))
-        result_bytes, result_mime = await impl.generate(image_bytes, mime, _build_prompt(prompt))
+        reference_images = get_swatches(color_ids or [])
+        result_bytes, result_mime = await impl.generate(
+            image_bytes, mime, _build_prompt(prompt), reference_images=reference_images
+        )
         key = _image_key(job_id, result_mime)
         storage.put(key, result_bytes, result_mime)
         _update_job(job_id, status="done", image_path=key, image_mime=result_mime)
@@ -259,6 +269,7 @@ async def create_job(
     image: UploadFile = File(...),
     prompt: str = Form(""),
     conversation_id: str | None = Form(None),
+    color_ids: str | None = Form(None),
 ):
     from app import storage
     from app.main import DB_ENABLED, _db, require_user
@@ -271,6 +282,7 @@ async def create_job(
         raise HTTPException(400, "Imagem vazia ou não enviada.")
     mime = image.content_type or "image/jpeg"
     job_id = "i" + secrets.token_hex(8)
+    color_id_list = [c for c in (color_ids or "").split(",") if c.strip()]
 
     # Guarda a imagem original — sem isso não dá pra oferecer "Refazer" depois
     # (a chamada ao fornecedor consome o arquivo, não fica guardado em lugar
@@ -280,11 +292,11 @@ async def create_job(
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_key, mime),
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_key, mime, color_ids or None),
         )
-    asyncio.create_task(_run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE))
+    asyncio.create_task(_run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE, color_id_list))
     return {"id": job_id, "status": "queued"}
 
 
@@ -308,6 +320,8 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
 
     mime = original["sourceMime"] or "image/jpeg"
     final_prompt = prompt if prompt is not None else (original["prompt"] or "")
+    color_ids = original["colorIds"] or ""
+    color_id_list = [c for c in color_ids.split(",") if c.strip()]
 
     new_job_id = "i" + secrets.token_hex(8)
     new_source_key = _image_key(new_job_id, mime, kind="src")
@@ -315,14 +329,14 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 new_job_id, user["username"], original["conversationId"],
-                DEFAULT_ENGINE, final_prompt, new_source_key, mime,
+                DEFAULT_ENGINE, final_prompt, new_source_key, mime, color_ids or None,
             ),
         )
-    asyncio.create_task(_run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE))
+    asyncio.create_task(_run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE, color_id_list))
     return {"id": new_job_id, "status": "queued", "prompt": final_prompt}
 
 

@@ -14,8 +14,10 @@ Imports de `app.main` ficam dentro das funções para evitar import circular.
 """
 
 import io
+import os
 import re
 import secrets
+import unicodedata
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
@@ -29,6 +31,61 @@ BRAND_ALIASES = {
     "estimmo": "stimmo",
 }
 BRAND_LABELS = {"simonetto": "Simonetto", "stimmo": "Stimmo"}
+
+# --- Swatches (imagem real do material) -------------------------------------
+# 14/07/2026: pedido do Davi — o botão "Cores" só inseria o NOME da cor no
+# prompt, sem precisão nenhuma pro Nano Banana (ele "chuta" a cor a partir só
+# do texto). Recortamos manualmente o swatch real de cada cor a partir dos
+# catálogos oficiais dos fabricantes (Arauco, Duratex, Berneck, Green Plac —
+# Guararapes não tem swatch isolado, só foto de ambiente, então fica sem
+# imagem) e guardamos em app/static/color_swatches/. Esse arquivo liga o nome
+# da cor (como aparece na planilha do Davi) ao arquivo do swatch.
+#
+# _swatch_core_name() remove sufixos de acabamento/variação (CHESS, MATT, TX,
+# "- AF" etc.) que a planilha às vezes anexa ao nome — sem isso "CANELA
+# CHESS" não bateria com o swatch "CANELA" que recortamos.
+_SWATCH_SUFFIXES = (
+    "CHESS", "MATT", "TX", "AF", "VEL", "MICRO", "RUST", "DESIGN", "LSF",
+    "ALUMI", "TEXTURA",
+)
+
+SWATCH_DIR = os.path.join(os.path.dirname(__file__), "static", "color_swatches")
+
+# nome-nucleo (ver _swatch_core_name) -> arquivo em app/static/color_swatches/
+SWATCH_FILES = {
+    # Arauco
+    "ACACIA CARMEL": "ACACIA_CARMEL.png", "ATENNA": "ATENNA.png", "BEIGE": "BEIGE.png",
+    "BRANCO SUPREMO": "BRANCO_SUPREMO.png", "BRANCO": "BRANCO_SUPREMO.png", "CANELA": "CANELA.png",
+    "CINZA CRISTAL": "CINZA_CRISTAL.png", "CINZA PURO": "CINZA_PURO.png",
+    "CONCRETO DECOR": "CONCRETO_DECOR.png", "CONNECT": "CONNECT.png", "EBANO": "EBANO.png",
+    "GRAFITO": "GRAFITO.png", "JADE": "JADE.png", "LINHO": "LINHO.png",
+    "LINO PIOMBO": "LINO_PIOMBO.png", "LINO PIMBO": "LINO_PIOMBO.png", "LORD": "LORD.png",
+    "LOURO": "LOURO.png", "NOCE NATURALE": "NOCE_NATURALE.png", "NOGUEIRA PERSA": "NOGUEIRA_PERSA.png",
+    "AREAL": "AREAL.png", "BETON": "BETON.png", "CACAO": "CACAO.png", "CRISTALINA": "CRISTALINA.png",
+    "DAMASCO": "DAMASCO.png", "ESCARLATE": "ESCARLATE.png", "FRAPE": "FRAPE.png", "GRIS": "GRIS.png",
+    "PAU FERRO": "PAU_FERRO.png", "SAL ROSA": "SAL_ROSA.png", "SALVIA": "SALVIA.png",
+    # Duratex
+    "ABSOLUTO": "ABSOLUTO.png", "BLUSH": "BLUSH.png", "CINZA SAGRADO": "CINZA_SAGRADO.png",
+    "GIANDUIA": "GIANDUIA.png", "NAZCA": "NAZCA.png", "NOGUEIRA CAIENA": "NOGUEIRA_CAIENA.png",
+    "NOGUEIRA FLORIDA": "NOGUEIRA_FLORIDA.png", "PINOLE": "PINOLE.png", "TITANIO": "TITANIO.png",
+    "PRETO": "PRETO.png",
+    # Berneck
+    "TABASCO": "TABASCO.png", "FALESIA": "FALESIA.png", "CERAMIK": "CERAMIK.png",
+    "METALIC SUEDE": "METALIC_SUEDE.png", "METTALIC SUEDE": "METALIC_SUEDE.png",
+    # Green Plac
+    "LONDRES": "LONDRES.png", "VEREDAS": "VEREDAS.png", "NILO": "NILO.png",
+}
+
+
+def _swatch_core_name(name: str) -> str:
+    s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^A-Za-z0-9 ]", " ", s.upper())
+    tokens = [t for t in s.split() if t not in _SWATCH_SUFFIXES]
+    return " ".join(tokens).strip()
+
+
+def _swatch_file_for(name: str) -> str | None:
+    return SWATCH_FILES.get(_swatch_core_name(name))
 
 
 def init_materials_db() -> None:
@@ -54,6 +111,20 @@ def init_materials_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_material_colors_brand "
                 "ON material_colors (brand, name);"
             )
+            # 14/07/2026 — swatch real do material (ver SWATCH_FILES acima),
+            # caminho relativo dentro de app/static/color_swatches/.
+            cur.execute("ALTER TABLE material_colors ADD COLUMN IF NOT EXISTS swatch_file TEXT;")
+            # Reconecta os swatches a cada boot pras linhas já importadas antes
+            # deste recurso existir (produção já tinha 74 cores da planilha
+            # antiga) — idempotente, sem precisar o Davi reimportar nada.
+            cur.execute("SELECT id, name FROM material_colors WHERE swatch_file IS NULL")
+            for color_id, name in cur.fetchall():
+                swatch_file = _swatch_file_for(name)
+                if swatch_file:
+                    cur.execute(
+                        "UPDATE material_colors SET swatch_file = %s WHERE id = %s",
+                        (swatch_file, color_id),
+                    )
     except Exception as e:
         print(f"[init_materials_db] falha: {e}")
 
@@ -130,12 +201,36 @@ async def import_colors(request: Request, file: UploadFile = File(...)):
         for brand, colors in parsed.items():
             for name, manufacturer in colors:
                 cur.execute(
-                    "INSERT INTO material_colors (id, brand, name, manufacturer, imported_by) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    ("mc" + secrets.token_hex(8), brand, name, manufacturer, user["username"]),
+                    "INSERT INTO material_colors (id, brand, name, manufacturer, imported_by, swatch_file) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    ("mc" + secrets.token_hex(8), brand, name, manufacturer, user["username"], _swatch_file_for(name)),
                 )
 
     return {"ok": True, "counts": {brand: len(colors) for brand, colors in parsed.items()}}
+
+
+@router.post("/colors/relink-swatches")
+def relink_swatches(request: Request):
+    """Reprocessa SWATCH_FILES contra as cores já importadas, sem precisar
+    reimportar a planilha inteira — útil depois de adicionar/trocar recortes
+    de swatch no código (deploy novo) sem esperar o Davi reenviar o .xlsx."""
+    from app.main import _db, _require_db, require_admin
+
+    require_admin(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, name FROM material_colors")
+        rows = cur.fetchall()
+        linked = 0
+        for color_id, name in rows:
+            swatch_file = _swatch_file_for(name)
+            if swatch_file:
+                linked += 1
+            cur.execute(
+                "UPDATE material_colors SET swatch_file = %s WHERE id = %s",
+                (swatch_file, color_id),
+            )
+    return {"ok": True, "total": len(rows), "linked": linked}
 
 
 @router.get("/colors")
@@ -148,17 +243,52 @@ def list_colors(request: Request, brand: str | None = None):
     with _db() as conn, conn.cursor() as cur:
         if brand:
             cur.execute(
-                "SELECT id, brand, name, manufacturer FROM material_colors "
+                "SELECT id, brand, name, manufacturer, swatch_file FROM material_colors "
                 "WHERE brand = %s ORDER BY name",
                 (brand,),
             )
         else:
-            cur.execute("SELECT id, brand, name, manufacturer FROM material_colors ORDER BY brand, name")
+            cur.execute(
+                "SELECT id, brand, name, manufacturer, swatch_file FROM material_colors "
+                "ORDER BY brand, name"
+            )
         rows = cur.fetchall()
     return [
-        {"id": r[0], "brand": r[1], "brandLabel": BRAND_LABELS.get(r[1], r[1]), "name": r[2], "manufacturer": r[3]}
+        {
+            "id": r[0], "brand": r[1], "brandLabel": BRAND_LABELS.get(r[1], r[1]), "name": r[2],
+            "manufacturer": r[3],
+            "swatchUrl": f"/static/color_swatches/{r[4]}" if r[4] else None,
+        }
         for r in rows
     ]
+
+
+def get_swatches(color_ids: list[str]) -> list[dict]:
+    """Usado por app/image.py na hora de gerar o render — devolve os bytes do
+    swatch (imagem real do material) de cada cor selecionada, pra anexar como
+    referência visual junto com a imagem elementar. Ids sem swatch_file (ex:
+    cor da Guararapes, sem swatch isolado) ou inválidos são ignorados."""
+    from app.main import DB_ENABLED, _db
+
+    if not DB_ENABLED or not color_ids:
+        return []
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT name, brand, swatch_file FROM material_colors "
+            "WHERE id = ANY(%s) AND swatch_file IS NOT NULL",
+            (color_ids,),
+        )
+        rows = cur.fetchall()
+    out = []
+    for name, brand, swatch_file in rows:
+        path = os.path.join(SWATCH_DIR, swatch_file)
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError:
+            continue
+        out.append({"name": name, "brand": BRAND_LABELS.get(brand, brand), "bytes": data, "mime": "image/png"})
+    return out
 
 
 @router.get("/status")
