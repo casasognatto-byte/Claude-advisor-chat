@@ -248,6 +248,11 @@ async def _run_image_job(
         _update_job(job_id, status="processing")
         asyncio.create_task(_run_render_params(job_id, prompt))
         reference_images = get_swatches(color_ids or [])
+        print(
+            f"[image job {job_id}] color_ids recebidos={color_ids!r} -> "
+            f"{len(reference_images)} swatch(es) anexado(s): "
+            f"{[r['name'] for r in reference_images]}"
+        )
         result_bytes, result_mime = await impl.generate(
             image_bytes, mime, _build_prompt(prompt), reference_images=reference_images
         )
@@ -282,6 +287,7 @@ async def create_job(
         raise HTTPException(400, "Imagem vazia ou não enviada.")
     mime = image.content_type or "image/jpeg"
     job_id = "i" + secrets.token_hex(8)
+    print(f"[image job {job_id}] POST /jobs recebeu color_ids={color_ids!r} (raw do form)")
     color_id_list = [c for c in (color_ids or "").split(",") if c.strip()]
 
     # Guarda a imagem original — sem isso não dá pra oferecer "Refazer" depois
