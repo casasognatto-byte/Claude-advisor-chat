@@ -472,9 +472,10 @@
   let currentRole = null;
   let convSelectMode = false;
   let convSelectedIds = new Set();
-  let treeData = [];        // [{id, clientName, environments:[{id,name,sortOrder}]}]
+  let treeData = [];        // [{id, clientName, environments:[{id,name,sortOrder,createdBy}]}]
   let expandedClients = new Set();
   let activeEnvironmentId = null;
+  let ownerFilterValue = "all"; // afeta tanto a árvore cliente/ambiente quanto as conversas soltas
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -529,7 +530,16 @@
     convListEl.innerHTML = "";
 
     // --- árvore cliente > ambiente (Biblioteca de Apresentações) ---
+    // Filtro "Todos/pessoa" da sidebar: cada ambiente sabe quem o criou
+    // (client_environments.created_by) — com um dono específico selecionado,
+    // só mostra ambientes daquela pessoa, e esconde clientes que ficarem sem
+    // nenhum ambiente visível.
     for (const client of treeData) {
+      const visibleEnvs = ownerFilterValue === "all"
+        ? client.environments
+        : client.environments.filter((env) => env.createdBy === ownerFilterValue);
+      if (ownerFilterValue !== "all" && !visibleEnvs.length) continue;
+
       const expanded = expandedClients.has(client.id);
       const cRow = document.createElement("div");
       cRow.className = "client-row" + (expanded ? " expanded" : "");
@@ -545,7 +555,7 @@
 
       const envList = document.createElement("div");
       envList.className = "env-list";
-      for (const env of client.environments) {
+      for (const env of visibleEnvs) {
         const eRow = document.createElement("div");
         eRow.className = "env-row" + (activeEnvironmentId === env.id ? " active" : "");
         eRow.dataset.id = env.id;
@@ -563,7 +573,12 @@
       envList.appendChild(addRow);
       convListEl.appendChild(envList);
 
-      makeDragReorderable(envList, ".env-row", (orderedIds) => reorderEnvironments(client.id, orderedIds));
+      // Arrastar-e-soltar reescreve sort_order só dos itens visíveis — com um
+      // dono específico filtrado, isso colidiria com os ambientes escondidos.
+      // Só habilita reorder com "Todos" selecionado.
+      if (ownerFilterValue === "all") {
+        makeDragReorderable(envList, ".env-row", (orderedIds) => reorderEnvironments(client.id, orderedIds));
+      }
     }
 
     // --- conversas soltas (sem cliente) — comportamento de sempre ---
@@ -1624,6 +1639,7 @@
     sel.style.display = "block";
     sel.value = "all";
     sel.addEventListener("change", async () => {
+      ownerFilterValue = sel.value;
       const rows = await Store.listByOwner(sel.value);
       conversations = rows.map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false, environmentId: c.environmentId || null }));
       renderList();

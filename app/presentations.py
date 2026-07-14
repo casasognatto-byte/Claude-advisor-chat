@@ -796,13 +796,13 @@ def get_projects_tree(request: Request):
         cur.execute("SELECT id, client_name FROM client_projects ORDER BY created_at DESC")
         projects = cur.fetchall()
         cur.execute(
-            "SELECT id, project_id, name, sort_order FROM client_environments "
+            "SELECT id, project_id, name, sort_order, created_by FROM client_environments "
             "ORDER BY project_id, sort_order"
         )
         envs_by_project: dict[str, list[dict]] = {}
-        for env_id, project_id, name, sort_order in cur.fetchall():
+        for env_id, project_id, name, sort_order, created_by in cur.fetchall():
             envs_by_project.setdefault(project_id, []).append(
-                {"id": env_id, "name": name, "sortOrder": sort_order}
+                {"id": env_id, "name": name, "sortOrder": sort_order, "createdBy": created_by}
             )
     return [
         {"id": p[0], "clientName": p[1], "environments": envs_by_project.get(p[0], [])}
