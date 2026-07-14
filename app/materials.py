@@ -268,24 +268,30 @@ def list_colors(request: Request, brand: str | None = None):
     ]
 
 
-def get_swatches(color_ids: list[str]) -> list[dict]:
+def get_swatches(color_ids: list[str], targets: dict[str, str] | None = None) -> list[dict]:
     """Usado por app/image.py na hora de gerar o render — devolve os bytes do
     swatch (imagem real do material) de cada cor selecionada, pra anexar como
     referência visual junto com a imagem elementar. Ids sem swatch_file (ex:
-    cor da Guararapes, sem swatch isolado) ou inválidos são ignorados."""
+    cor da Guararapes, sem swatch isolado) ou inválidos são ignorados.
+
+    `targets` (opcional) é {color_id: "nome do móvel"} — quando presente, vai
+    junto no dict de retorno pra app/image_engines.py incluir na instrução de
+    cada referência qual móvel deve receber aquela cor (ambientes com mais de
+    um móvel, ver pedido do Davi de 14/07/2026)."""
     from app.main import DB_ENABLED, _db
 
     if not DB_ENABLED or not color_ids:
         return []
+    targets = targets or {}
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT name, brand, swatch_file FROM material_colors "
+            "SELECT id, name, brand, swatch_file FROM material_colors "
             "WHERE id = ANY(%s) AND swatch_file IS NOT NULL",
             (color_ids,),
         )
         rows = cur.fetchall()
     out = []
-    for name, brand, swatch_file in rows:
+    for color_id, name, brand, swatch_file in rows:
         path = os.path.join(SWATCH_DIR, swatch_file)
         try:
             with open(path, "rb") as f:
@@ -293,7 +299,10 @@ def get_swatches(color_ids: list[str]) -> list[dict]:
         except OSError:
             continue
         mime = "image/jpeg" if swatch_file.lower().endswith((".jpg", ".jpeg")) else "image/png"
-        out.append({"name": name, "brand": BRAND_LABELS.get(brand, brand), "bytes": data, "mime": mime})
+        out.append({
+            "name": name, "brand": BRAND_LABELS.get(brand, brand), "bytes": data, "mime": mime,
+            "target": targets.get(color_id) or None,
+        })
     return out
 
 

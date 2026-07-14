@@ -210,9 +210,13 @@
   .color-item .manuf { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; }
   .color-item .swatch-thumb { flex: none; width: 22px; height: 22px; border-radius: 5px; object-fit: cover; border: 1px solid var(--glass-border); }
   .colors-side { width: 260px; flex: none; border-left: 1px solid var(--glass-border); padding: 16px 20px; display: flex; flex-direction: column; overflow-y: auto; }
-  .colors-selected { display: flex; flex-wrap: wrap; gap: 6px; }
-  .colors-selected .chip { font-size: 11.5px; padding: 5px 10px; }
-  .colors-selected .chip .x { margin-left: 4px; opacity: .7; }
+  .colors-selected { display: flex; flex-direction: column; gap: 8px; }
+  .csr { background: var(--glass-bg-soft); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .csr.csr-missing-target { border-color: var(--danger-bg); }
+  .csr-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+  .csr-top .x { flex: none; cursor: pointer; color: var(--muted); background: none; border: none; font-size: 12px; padding: 2px 4px; }
+  .csr-top .x:hover { color: var(--danger); }
+  .csr-target { width: 100%; font-size: 11.5px; padding: 6px 8px; }
 
   /* ---------------- Responsivo ---------------- */
   .sidebar-backdrop, .inspector-backdrop { display: none; }
@@ -1123,7 +1127,7 @@
       chip.className = "staged-chip";
       chip.title = "Referência de cor oficial — anexada na geração";
       const label = document.createElement("span");
-      label.textContent = `🎨 ${color.name}`;
+      label.textContent = color.target ? `🎨 ${color.name} → ${color.target}` : `🎨 ${color.name}`;
       chip.appendChild(label);
       const rm = document.createElement("button");
       rm.className = "remove"; rm.title = "Remover"; rm.textContent = "✕";
@@ -1148,7 +1152,7 @@
     const entry = getStagedEntry(false);
     if (!entry.files.length) return;
     const files = entry.files;
-    const colorIds = getStagedColors().map((c) => c.id);
+    const colorRefs = getStagedColors().map((c) => ({ id: c.id, target: c.target || "" }));
     stagedByConv.delete(activeId); stagedColorsByConv.delete(activeId); renderStagedRow();
     // Le o prompt uma unica vez (era lido de novo a cada arquivo, e como o
     // campo era limpo logo em seguida, só a 1ª imagem recebia a instrução —
@@ -1156,11 +1160,11 @@
     // de esperar uma terminar pra começar a próxima.
     const prompt = input.value.trim();
     input.value = ""; autosize();
-    await Promise.all(files.map((file) => startImageJob(file, prompt, colorIds)));
+    await Promise.all(files.map((file) => startImageJob(file, prompt, colorRefs)));
   });
 
   // ---------- Geração de imagem (ícone no composer) ----------
-  async function startImageJob(file, prompt, colorIds) {
+  async function startImageJob(file, prompt, colorRefs) {
     let c = active(); if (!c) { newConv(); c = active(); }
     await ensureData(c);
 
@@ -1176,7 +1180,12 @@
     form.append("image", file);
     form.append("prompt", prompt);
     form.append("conversation_id", c.id);
-    if (colorIds && colorIds.length) form.append("color_ids", colorIds.join(","));
+    if (colorRefs && colorRefs.length) {
+      form.append("color_ids", colorRefs.map((c) => c.id).join(","));
+      // móvel-alvo por cor, alinhado por id — pra Nano Banana saber onde
+      // aplicar cada swatch quando o ambiente tem mais de um móvel.
+      form.append("color_targets", JSON.stringify(colorRefs));
+    }
 
     try {
       const res = await fetch("/api/image/jobs", { method: "POST", body: form });
@@ -1623,15 +1632,34 @@
     document.getElementById("colorsCount").textContent = colorsSelected.size;
     wrap.innerHTML = "";
     for (const [id, info] of colorsSelected) {
-      const chip = document.createElement("span");
-      chip.className = "chip active";
-      chip.innerHTML = `${escapeHtml(info.name)}<span class="x">✕</span>`;
-      chip.querySelector(".x").addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "csr" + (!((info.target || "").trim()) ? " csr-missing-target" : "");
+      const top = document.createElement("div");
+      top.className = "csr-top";
+      const name = document.createElement("span");
+      name.textContent = info.name;
+      const x = document.createElement("button");
+      x.type = "button"; x.className = "x"; x.textContent = "✕"; x.title = "Remover";
+      x.addEventListener("click", () => {
         colorsSelected.delete(id);
         renderColorsGrid();
         renderColorsSelected();
       });
-      wrap.appendChild(chip);
+      top.appendChild(name); top.appendChild(x);
+      const targetInput = document.createElement("input");
+      targetInput.type = "text";
+      targetInput.className = "csr-target";
+      targetInput.placeholder = "Aplicar em qual móvel? (ex: armários superiores)";
+      targetInput.value = info.target || "";
+      // Ambiente pode ter mais de um móvel — sem isso o Sogno (ou a arquiteta
+      // olhando o histórico depois) não sabe onde cada cor deveria ir, mesmo
+      // com só 1 cor selecionada (achado real do Davi, 14/07/2026).
+      targetInput.addEventListener("input", () => {
+        info.target = targetInput.value;
+        row.classList.toggle("csr-missing-target", !targetInput.value.trim());
+      });
+      row.appendChild(top); row.appendChild(targetInput);
+      wrap.appendChild(row);
     }
   }
 
@@ -1639,22 +1667,33 @@
 
   document.getElementById("colorsUseBtn").addEventListener("click", () => {
     if (!colorsSelected.size) { document.getElementById("colorsMsg").textContent = "Selecione ao menos uma cor."; return; }
+    const entries = Array.from(colorsSelected.entries()); // [id, {name, brandLabel, hasSwatch, target}]
+    // Ambiente pode ter mais de um móvel — mesmo com 1 cor só, precisa saber
+    // em qual móvel ela vai (achado real do Davi, 14/07/2026). Bloqueia até
+    // toda cor selecionada ter o campo preenchido, em vez de deixar pra
+    // resolver depois (o "no(s): ___" em branco no texto já foi tentado
+    // antes e a arquiteta às vezes esquecia de preencher).
+    const missing = entries.filter(([, v]) => !(v.target || "").trim());
+    if (missing.length) {
+      document.getElementById("colorsMsg").textContent =
+        `Preencha "aplicar em qual móvel" pra ${missing.length === 1 ? "essa cor" : "essas cores"} antes de confirmar.`;
+      renderColorsSelected();
+      return;
+    }
     if (!activeId) { let c = active(); if (!c) { newConv(); } }
-    const entries = Array.from(colorsSelected.entries()); // [id, {name, brandLabel, hasSwatch}]
-    const names = entries.map(([, v]) => v.name);
-    // Com 2+ cores, a aplicação de cada uma nos móveis é ambígua — em vez de
-    // só listar os nomes, monta um modelo pra arquiteta preencher qual cor
-    // vai em qual móvel antes de mandar (evita o Sogno ter que adivinhar).
-    const text = names.length === 1
-      ? `Cor de referência: ${names[0]}.`
-      : "Cores de referência:\n" + names.map(n => `- ${n} no(s): ___`).join("\n");
+
+    const text = entries.length === 1
+      ? `Cor de referência: ${entries[0][1].name} — aplicar em: ${entries[0][1].target.trim()}.`
+      : "Cores de referência:\n" + entries.map(([, v]) => `- ${v.name} no(s): ${v.target.trim()}`).join("\n");
     input.value = input.value ? input.value + "\n" + text : text;
     autosize();
 
     // As cores com swatch real ficam "em espera" junto com a imagem elementar
-    // — na hora de "Gerar", o Sogno anexa a foto real do material como
-    // referência visual (mais precisão que só o nome em texto).
-    const withSwatch = entries.filter(([, v]) => v.hasSwatch).map(([id, v]) => ({ id, name: v.name, brandLabel: v.brandLabel }));
+    // — na hora de "Gerar", o Sogno anexa a foto real do material (com o
+    // móvel-alvo na instrução) como referência visual, mais precisa que só
+    // o nome em texto.
+    const withSwatch = entries.filter(([, v]) => v.hasSwatch)
+      .map(([id, v]) => ({ id, name: v.name, brandLabel: v.brandLabel, target: v.target.trim() }));
     if (withSwatch.length && activeId) {
       const existing = stagedColorsByConv.get(activeId) || [];
       const existingIds = new Set(existing.map((c) => c.id));

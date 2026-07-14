@@ -72,9 +72,15 @@ class NanoBananaEngine:
         # ver app/materials.py) — dão ao modelo a cor/textura exata em vez de
         # só o nome em texto, que ele podia interpretar de forma imprecisa.
         for ref in reference_images or []:
+            target = (ref.get("target") or "").strip()
+            # Com o móvel-alvo preenchido (modal de Cores, ver index.html),
+            # a instrução aponta exatamente onde aplicar — sem isso o modelo
+            # tinha que adivinhar qual móvel recebe qual cor em ambientes com
+            # mais de um (achado real do Davi, 14/07/2026).
+            where = f"no(s) seguinte(s) móvel(is): {target}" if target else "onde a instrução acima indicar"
             parts.append({
                 "text": f"Referência exata de cor/material — {ref['name']} (linha {ref['brand']}). "
-                        "Aplique esta cor/textura precisamente onde a instrução acima indicar."
+                        f"Aplique esta cor/textura precisamente {where}."
             })
             parts.append({
                 "inline_data": {

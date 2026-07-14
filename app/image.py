@@ -102,6 +102,10 @@ def init_image_db() -> None:
             # referência visual nesse job, pra "Refazer" reaproveitar as mesmas
             # sem a arquiteta precisar reabrir o modal de Cores.
             cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS color_ids TEXT;")
+            # 14/07/2026 — móvel-alvo de cada cor (JSON [{id, target}]) — sem
+            # isso o Sogno não sabia em qual móvel aplicar a cor quando o
+            # ambiente tem mais de um (achado real do Davi).
+            cur.execute("ALTER TABLE image_jobs ADD COLUMN IF NOT EXISTS color_targets TEXT;")
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_image_jobs_user "
                 "ON image_jobs (username, created_at DESC);"
@@ -138,7 +142,7 @@ def _get_job(job_id: str) -> dict | None:
         cur.execute(
             "SELECT id, username, conversation_id, status, error_message, image_path, "
             "prompt, source_path, source_mime, engine, param_light, param_texture, param_camera, "
-            "image_mime, color_ids "
+            "image_mime, color_ids, color_targets "
             "FROM image_jobs WHERE id = %s",
             (job_id,),
         )
@@ -150,7 +154,7 @@ def _get_job(job_id: str) -> dict | None:
         "status": row[3], "error": row[4], "imagePath": row[5],
         "prompt": row[6], "sourcePath": row[7], "sourceMime": row[8], "engine": row[9],
         "paramLight": row[10], "paramTexture": row[11], "paramCamera": row[12],
-        "imageMime": row[13], "colorIds": row[14],
+        "imageMime": row[13], "colorIds": row[14], "colorTargets": row[15],
     }
 
 
@@ -235,7 +239,13 @@ def _bridge_to_project_images(job_id: str, key: str, mime: str) -> None:
 
 
 async def _run_image_job(
-    job_id: str, image_bytes: bytes, mime: str, prompt: str, engine: str, color_ids: list[str] | None = None
+    job_id: str,
+    image_bytes: bytes,
+    mime: str,
+    prompt: str,
+    engine: str,
+    color_ids: list[str] | None = None,
+    color_targets: dict[str, str] | None = None,
 ) -> None:
     from app import storage
     from app.image_engines import ENGINES, ImageGenerationError
@@ -247,11 +257,11 @@ async def _run_image_job(
             raise ImageGenerationError(f"Engine desconhecido: {engine}")
         _update_job(job_id, status="processing")
         asyncio.create_task(_run_render_params(job_id, prompt))
-        reference_images = get_swatches(color_ids or [])
+        reference_images = get_swatches(color_ids or [], targets=color_targets)
         print(
-            f"[image job {job_id}] color_ids recebidos={color_ids!r} -> "
+            f"[image job {job_id}] color_ids recebidos={color_ids!r} targets={color_targets!r} -> "
             f"{len(reference_images)} swatch(es) anexado(s): "
-            f"{[r['name'] for r in reference_images]}"
+            f"{[(r['name'], r.get('target')) for r in reference_images]}"
         )
         result_bytes, result_mime = await impl.generate(
             image_bytes, mime, _build_prompt(prompt), reference_images=reference_images
@@ -268,6 +278,19 @@ async def _run_image_job(
         _update_job(job_id, status="error", error_message=GENERIC_ERROR)
 
 
+def _parse_color_targets(raw: str | None) -> dict[str, str]:
+    """color_targets vem do frontend como JSON [{id, target}, ...] — devolve
+    {id: target} pra get_swatches() montar a instrução por móvel. Nunca
+    derruba o job se vier mal formado (ex: cliente antigo sem esse campo)."""
+    if not raw:
+        return {}
+    try:
+        items = json.loads(raw)
+        return {i["id"]: (i.get("target") or "").strip() for i in items if i.get("id")}
+    except (ValueError, TypeError, KeyError):
+        return {}
+
+
 @router.post("/jobs")
 async def create_job(
     request: Request,
@@ -275,6 +298,7 @@ async def create_job(
     prompt: str = Form(""),
     conversation_id: str | None = Form(None),
     color_ids: str | None = Form(None),
+    color_targets: str | None = Form(None),
 ):
     from app import storage
     from app.main import DB_ENABLED, _db, require_user
@@ -287,8 +311,8 @@ async def create_job(
         raise HTTPException(400, "Imagem vazia ou não enviada.")
     mime = image.content_type or "image/jpeg"
     job_id = "i" + secrets.token_hex(8)
-    print(f"[image job {job_id}] POST /jobs recebeu color_ids={color_ids!r} (raw do form)")
     color_id_list = [c for c in (color_ids or "").split(",") if c.strip()]
+    color_target_map = _parse_color_targets(color_targets)
 
     # Guarda a imagem original — sem isso não dá pra oferecer "Refazer" depois
     # (a chamada ao fornecedor consome o arquivo, não fica guardado em lugar
@@ -298,11 +322,13 @@ async def create_job(
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_key, mime, color_ids or None),
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids, color_targets) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (job_id, user["username"], conversation_id, DEFAULT_ENGINE, prompt or "", source_key, mime, color_ids or None, color_targets or None),
         )
-    asyncio.create_task(_run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE, color_id_list))
+    asyncio.create_task(
+        _run_image_job(job_id, image_bytes, mime, prompt or "", DEFAULT_ENGINE, color_id_list, color_target_map)
+    )
     return {"id": job_id, "status": "queued"}
 
 
@@ -328,6 +354,8 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
     final_prompt = prompt if prompt is not None else (original["prompt"] or "")
     color_ids = original["colorIds"] or ""
     color_id_list = [c for c in color_ids.split(",") if c.strip()]
+    color_targets = original["colorTargets"]
+    color_target_map = _parse_color_targets(color_targets)
 
     new_job_id = "i" + secrets.token_hex(8)
     new_source_key = _image_key(new_job_id, mime, kind="src")
@@ -335,14 +363,16 @@ async def redo_job(job_id: str, request: Request, prompt: str | None = Form(None
 
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            "INSERT INTO image_jobs (id, username, conversation_id, engine, prompt, source_path, source_mime, color_ids, color_targets) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 new_job_id, user["username"], original["conversationId"],
-                DEFAULT_ENGINE, final_prompt, new_source_key, mime, color_ids or None,
+                DEFAULT_ENGINE, final_prompt, new_source_key, mime, color_ids or None, color_targets or None,
             ),
         )
-    asyncio.create_task(_run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE, color_id_list))
+    asyncio.create_task(
+        _run_image_job(new_job_id, image_bytes, mime, final_prompt, DEFAULT_ENGINE, color_id_list, color_target_map)
+    )
     return {"id": new_job_id, "status": "queued", "prompt": final_prompt}
 
 
