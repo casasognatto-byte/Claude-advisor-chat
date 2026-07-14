@@ -800,8 +800,13 @@
       const r = document.createElement("div"); r.className = "msg assistant error";
       const b = document.createElement("div"); b.className = "bubble"; b.textContent = "⚠️ " + item.text; r.appendChild(b); chat.appendChild(r);
     } else if (item.type === "image") {
+      // _localId identifica o card mesmo antes de existir jobId (item
+      // "pending", enviado mas aguardando "Gerar") -- ver queueEnvironmentRender.
+      // Itens antigos (de antes desse recurso) não têm _localId salvo; cai
+      // pro jobId, que sempre existia nesses.
+      if (!item._localId) item._localId = item.jobId || uid();
       const r = document.createElement("div"); r.className = "msg assistant";
-      const card = document.createElement("div"); card.className = "render-card"; card.id = "image-" + item.jobId;
+      const card = document.createElement("div"); card.className = "render-card"; card.id = "img-" + item._localId;
       renderImageCardBody(card, item);
       r.appendChild(card); chat.appendChild(r);
     }
@@ -819,6 +824,12 @@
       const s = document.createElement("div"); s.className = "status"; s.textContent = "⚠️ " + (item.error || "Falha ao gerar a imagem, tente novamente.");
       card.appendChild(s);
       appendRedoControls(card, item);
+    } else if (item.status === "pending") {
+      // Enviado (imagem + cor + prompt prontos), aguardando o clique em
+      // "Gerar" -- sem isso a fileira "em espera" some da tela ao clicar
+      // "Enviar" e parece que nada aconteceu (achado real do Davi).
+      const s = document.createElement("div"); s.className = "status"; s.textContent = "🕓 Pronto pra gerar — clique em \"Gerar\" para processar este ambiente.";
+      card.appendChild(s);
     } else {
       const s = document.createElement("div"); s.className = "status"; s.textContent = "Gerando render…";
       card.appendChild(s);
@@ -858,10 +869,10 @@
   async function redoImageJob(originalJobId, prompt) {
     let c = active(); if (!c) return;
     await ensureData(c);
-    const item = { type: "image", jobId: null, status: "queued" };
+    const item = { type: "image", jobId: null, status: "queued", _localId: uid() };
     c.data.view.push(item);
     const r = document.createElement("div"); r.className = "msg assistant";
-    const card = document.createElement("div"); card.className = "render-card";
+    const card = document.createElement("div"); card.className = "render-card"; card.id = "img-" + item._localId;
     renderImageCardBody(card, item);
     r.appendChild(card); chat.appendChild(r); scrollDown();
 
@@ -878,7 +889,6 @@
     } catch (e) {
       item.status = "error"; item.error = "Erro de conexão.";
     }
-    card.id = "image-" + item.jobId;
     renderImageCardBody(card, item);
     await persist(c);
     if (item.jobId && (item.status === "queued" || item.status === "processing")) pollImageJob(item.jobId, item, c);
@@ -1188,14 +1198,27 @@
   // API ainda -- pedido do Davi (14/07/2026): a arquiteta prepara ambiente
   // por ambiente e só no fim manda gerar tudo de uma vez, em vez de esperar
   // cada render terminar pra passar pro próximo. Ver "Gerar renders".
+  //
+  // Cria já aqui um item "pending" por arquivo e mostra na conversa (status
+  // "🕓 Pronto pra gerar") -- sem isso a fileira "em espera" simplesmente
+  // some da tela ao clicar "Enviar" e a arquiteta pode achar que deu errado
+  // (achado real do Davi). Os itens ficam de verdade na conversa (persistidos),
+  // e viram o card de progresso real quando "Gerar" dispara o job (ver
+  // startImageJob, que reaproveita esse mesmo item em vez de criar outro).
   function queueEnvironmentRender() {
     const entry = getStagedEntry(false);
     if (!entry.files.length) return;
     const colorRefs = getStagedColors().map((c) => ({ id: c.id, target: c.target || "" }));
     const promptText = input.value.trim();
-    queuedByConv.set(activeId, { environmentId: activeEnvironmentId, files: entry.files, colorRefs, prompt: promptText });
+    const c = active();
+    if (!c) return;
+    const items = entry.files.map(() => ({ type: "image", jobId: null, status: "pending", _localId: uid() }));
+    for (const item of items) c.data.view.push(item);
+    if (c.id === activeId) { for (const item of items) renderItem(item); scrollDown(); }
+    queuedByConv.set(activeId, { environmentId: activeEnvironmentId, files: entry.files, items, colorRefs, prompt: promptText });
     stagedByConv.delete(activeId); stagedColorsByConv.delete(activeId);
     input.value = ""; autosize();
+    persist(c);
     renderStagedRow(); renderList();
   }
 
@@ -1234,7 +1257,10 @@
     for (const convId of convIds) {
       const q = queuedByConv.get(convId);
       queuedByConv.delete(convId);
-      for (const file of q.files) jobs.push(startImageJob(file, q.prompt, q.colorRefs, convId));
+      // items[i] é o mesmo item "pending" já mostrado na conversa desde o
+      // "Enviar" -- reaproveitado (não cria outro card) pra virar o
+      // progresso real assim que o job é criado.
+      q.files.forEach((file, i) => jobs.push(startImageJob(file, q.prompt, q.colorRefs, convId, q.items[i])));
     }
     renderList(); updateGenerateAllBtn();
     await Promise.all(jobs);
@@ -1245,23 +1271,31 @@
   // não é necessariamente o que está aberto na tela agora -- só mexe no DOM
   // do chat se for a conversa ativa; as outras só atualizam o estado
   // persistido (aparece certinho quando a arquiteta abrir aquele ambiente).
-  async function startImageJob(file, prompt, colorRefs, targetConvId) {
+  // existingItem: quando vem de "Gerar" (ver acima), reaproveita o item
+  // "pending" que já estava na tela em vez de criar um card novo.
+  async function startImageJob(file, prompt, colorRefs, targetConvId, existingItem) {
     let c;
     if (targetConvId) { c = conversations.find((x) => x.id === targetConvId); if (!c) return; }
     else { c = active(); if (!c) { newConv(); c = active(); } }
     await ensureData(c);
     const isActive = c.id === activeId;
 
-    const item = { type: "image", jobId: null, status: "queued" };
-    c.data.view.push(item);
-    let card = null;
-    if (isActive) {
+    let item = existingItem;
+    if (!item) {
+      item = { type: "image", jobId: null, status: "queued", _localId: uid() };
+      c.data.view.push(item);
+    } else {
+      item.status = "queued";
+    }
+
+    let card = isActive ? document.getElementById("img-" + item._localId) : null;
+    if (isActive && !card) {
       if (c.data.view.length === 1) chat.innerHTML = ""; // tira o placeholder "Comece uma nova conversa"
       const r = document.createElement("div"); r.className = "msg assistant";
-      card = document.createElement("div"); card.className = "render-card";
-      renderImageCardBody(card, item);
+      card = document.createElement("div"); card.className = "render-card"; card.id = "img-" + item._localId;
       r.appendChild(card); chat.appendChild(r); scrollDown();
     }
+    if (card) renderImageCardBody(card, item);
 
     const form = new FormData();
     form.append("image", file);
@@ -1285,7 +1319,7 @@
     } catch (e) {
       item.status = "error"; item.error = "Erro de conexão.";
     }
-    if (card) { card.id = "image-" + item.jobId; renderImageCardBody(card, item); }
+    if (card) renderImageCardBody(card, item);
     await persist(c);
     if (item.jobId && (item.status === "queued" || item.status === "processing")) pollImageJob(item.jobId, item, c);
   }
@@ -1298,7 +1332,7 @@
           const data = await res.json();
           item.status = data.status;
           item.error = data.error;
-          const card = document.getElementById("image-" + jobId);
+          const card = document.getElementById("img-" + item._localId);
           if (card) renderImageCardBody(card, item);
           if (data.status === "done" || data.status === "error") { await persist(c); renderInspector(); return; }
         }
