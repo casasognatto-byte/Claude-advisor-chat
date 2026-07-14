@@ -74,6 +74,11 @@ SWATCH_FILES = {
     "METALIC SUEDE": "METALIC_SUEDE.png", "METTALIC SUEDE": "METALIC_SUEDE.png",
     # Green Plac
     "LONDRES": "LONDRES.png", "VEREDAS": "VEREDAS.png", "NILO": "NILO.png",
+    # Arauco — fotos de produto direto de arauco.com.br/lojaonline.arauco.com
+    # (links que o Davi mandou, 14/07/2026), pras cores que não apareciam nos
+    # catálogos em PDF.
+    "VERMONT DARK": "VERMONT_DARK.jpg", "CARAMELO": "CAMELO.jpg", "BUFALO": "BUFALO.jpg",
+    "TOKAI": "TOKAI.jpg", "NORDIC": "NORDIC.jpg",
 }
 
 
@@ -287,7 +292,8 @@ def get_swatches(color_ids: list[str]) -> list[dict]:
                 data = f.read()
         except OSError:
             continue
-        out.append({"name": name, "brand": BRAND_LABELS.get(brand, brand), "bytes": data, "mime": "image/png"})
+        mime = "image/jpeg" if swatch_file.lower().endswith((".jpg", ".jpeg")) else "image/png"
+        out.append({"name": name, "brand": BRAND_LABELS.get(brand, brand), "bytes": data, "mime": mime})
     return out
 
 
