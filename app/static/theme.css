@@ -43,6 +43,12 @@
   --radius-sm: 10px;
   --shadow-deep: 0 24px 70px rgba(0, 0, 0, .55);
   --shadow-soft: 0 10px 30px rgba(0, 0, 0, .35);
+
+  /* Sem isso, o Chrome/Windows ignora a cor customizada dos <option> e
+     renderiza o popup nativo do <select> no tema claro do sistema por
+     padrão — a causa real do dropdown aparecer branco mesmo com
+     "select option { background: ... }" definido (ver commit anterior). */
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
