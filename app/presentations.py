@@ -22,6 +22,7 @@ evitar import circular. Arquivos ficam em `app.storage` (R2 ou disco local).
 import asyncio
 import io
 import json
+import os
 import secrets
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -74,6 +75,7 @@ ROOM_LABELS = {
 
 _MIME_OK = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 _PDF_MIME = "application/pdf"
+_COVER_MIME_OK = {"image/jpeg"}
 
 
 def _rasterize_pdf(data: bytes, dpi: int = 120) -> list[bytes]:
@@ -245,6 +247,11 @@ def init_presentations_db() -> None:
                 );
                 """
             )
+            # Capa de ambiente: 1 imagem de fundo (JPG) por modelo, reaproveitada
+            # em toda apresentação — o nome de cada ambiente é escrito por cima
+            # dinamicamente na hora de montar o deck (ver _render_environment_cover).
+            cur.execute("ALTER TABLE presentation_templates ADD COLUMN IF NOT EXISTS cover_image_key TEXT;")
+            cur.execute("ALTER TABLE presentation_templates ADD COLUMN IF NOT EXISTS cover_image_mime TEXT;")
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS institutional_slides (
@@ -417,13 +424,17 @@ def list_templates(request: Request):
         return []
     with _db() as conn, conn.cursor() as cur:
         cur.execute(
-            "SELECT t.id, t.name, t.created_by, EXTRACT(EPOCH FROM t.created_at), COUNT(s.id) "
+            "SELECT t.id, t.name, t.created_by, EXTRACT(EPOCH FROM t.created_at), COUNT(s.id), "
+            "(t.cover_image_key IS NOT NULL) "
             "FROM presentation_templates t LEFT JOIN institutional_slides s ON s.template_id = t.id "
-            "GROUP BY t.id ORDER BY t.created_at"
+            "GROUP BY t.id, t.cover_image_key ORDER BY t.created_at"
         )
         rows = cur.fetchall()
     return [
-        {"id": r[0], "name": r[1], "createdBy": r[2], "createdAt": float(r[3]), "slideCount": r[4]}
+        {
+            "id": r[0], "name": r[1], "createdBy": r[2], "createdAt": float(r[3]), "slideCount": r[4],
+            "hasCover": r[5],
+        }
         for r in rows
     ]
 
@@ -460,6 +471,8 @@ def delete_template(template_id: str, request: Request):
     with _db() as conn, conn.cursor() as cur:
         cur.execute("SELECT storage_key FROM institutional_slides WHERE template_id = %s", (template_id,))
         slide_keys = [r[0] for r in cur.fetchall()]
+        cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+        cover_row = cur.fetchone()
         cur.execute("DELETE FROM presentation_templates WHERE id = %s RETURNING id", (template_id,))
         if not cur.fetchone():
             raise HTTPException(404, "Modelo não encontrado.")
@@ -467,6 +480,8 @@ def delete_template(template_id: str, request: Request):
         cur.execute("UPDATE client_projects SET template_id = NULL WHERE template_id = %s", (template_id,))
     for key in slide_keys:
         storage.delete(key)
+    if cover_row and cover_row[0]:
+        storage.delete(cover_row[0])
     return {"ok": True}
 
 
@@ -576,6 +591,83 @@ async def add_template_slide(
                 (slide_id, storage_key, page_mime, slide_caption, next_order + i, is_closing, user["username"], template_id),
             )
     return {"ids": slide_ids, "count": len(slide_ids), "isClosing": is_closing}
+
+
+@router.post("/templates/{template_id}/cover")
+async def upload_template_cover(template_id: str, request: Request, image: UploadFile = File(...)):
+    """Sobe (ou substitui) a capa de ambiente do modelo — sempre 1 imagem JPG,
+    reaproveitada em toda apresentação com o nome de cada ambiente escrito por
+    cima na hora de montar o deck (ver _render_environment_cover)."""
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    mime = image.content_type or ""
+    if mime not in _COVER_MIME_OK:
+        raise HTTPException(400, "A capa precisa ser um arquivo JPG.")
+    file_bytes = await image.read()
+    if not file_bytes:
+        raise HTTPException(400, "Arquivo vazio ou não enviado.")
+
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Modelo não encontrado.")
+        old_key = row[0]
+        cover_key = "cover_" + secrets.token_hex(8) + ".jpg"
+        storage.put(cover_key, file_bytes, mime)
+        cur.execute(
+            "UPDATE presentation_templates SET cover_image_key = %s, cover_image_mime = %s WHERE id = %s",
+            (cover_key, mime, template_id),
+        )
+    if old_key:
+        storage.delete(old_key)
+    return {"ok": True}
+
+
+@router.get("/templates/{template_id}/cover/file")
+def get_template_cover_file(template_id: str, request: Request):
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT cover_image_key, cover_image_mime FROM presentation_templates WHERE id = %s", (template_id,))
+        row = cur.fetchone()
+    if not row:
+        raise HTTPException(404, "Modelo não encontrado.")
+    if not row[0]:
+        raise HTTPException(404, "Este modelo ainda não tem capa.")
+    data = storage.get(row[0])
+    if data is None:
+        raise HTTPException(404, "Arquivo não disponível.")
+    return Response(content=data, media_type=row[1] or "image/jpeg")
+
+
+@router.delete("/templates/{template_id}/cover")
+def delete_template_cover(template_id: str, request: Request):
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Modelo não encontrado.")
+        cur.execute(
+            "UPDATE presentation_templates SET cover_image_key = NULL, cover_image_mime = NULL WHERE id = %s",
+            (template_id,),
+        )
+    if row[0]:
+        storage.delete(row[0])
+    return {"ok": True}
 
 
 @router.get("/templates/{template_id}/slides/{slide_id}/file")
@@ -1213,6 +1305,7 @@ def get_deck(project_id: str, request: Request):
             template_id = fallback[0] if fallback else None
 
         abertura, fechamento = [], []
+        has_cover = False
         if template_id:
             cur.execute(
                 "SELECT id, caption, is_closing FROM institutional_slides "
@@ -1225,17 +1318,27 @@ def get_deck(project_id: str, request: Request):
                     "fileUrl": f"/api/presentations/templates/{template_id}/slides/{r[0]}/file",
                 }
                 (fechamento if r[2] else abertura).append(item)
+            cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+            cover_row = cur.fetchone()
+            has_cover = bool(cover_row and cover_row[0])
 
-        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name"), (project_id,))
-        ambientes = [
-            {
+        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name, ce.id"), (project_id,))
+        ambientes = []
+        last_env_id = object()  # sentinel: nunca bate com um id de verdade nem com None
+        for r in cur.fetchall():
+            image_id, room_type, env_name, env_id = r
+            if has_cover and env_id and env_id != last_env_id:
+                ambientes.append({
+                    "kind": "capa", "id": f"capa-{env_id}", "caption": env_name,
+                    "fileUrl": f"/api/presentations/{project_id}/environments/{env_id}/cover.png",
+                })
+                last_env_id = env_id
+            ambientes.append({
                 "kind": "ambiente",
-                "id": r[0],
-                "caption": r[2] or ROOM_LABELS.get(r[1], r[1]),
-                "fileUrl": f"/api/presentations/{project_id}/images/{r[0]}/file",
-            }
-            for r in cur.fetchall()
-        ]
+                "id": image_id,
+                "caption": env_name or ROOM_LABELS.get(room_type, room_type),
+                "fileUrl": f"/api/presentations/{project_id}/images/{image_id}/file",
+            })
         slides = abertura + ambientes + fechamento
     return {
         "projectId": project_id, "clientName": project[0], "templateId": template_id, "slides": slides,
@@ -1285,6 +1388,79 @@ def _fit_to_page(img, page_size, crop_to_fill=False):
     return canvas
 
 
+_COVER_FONT_PATH = os.path.join(os.path.dirname(__file__), "static", "fonts", "FSBenjamin-Regular.otf")
+_COVER_TEXT_COLOR = (25, 35, 24)  # #192318 — cor exata passada pelo Davi (hex/RGB/CMYK)
+
+
+def _render_environment_cover(cover_bytes: bytes, env_name: str, page_size: tuple):
+    """Capa de ambiente: encaixa a imagem de fundo do modelo no tamanho de
+    página (mesmo _fit_to_page das demais páginas) e escreve o nome do
+    ambiente centralizado, em maiúsculas, na tipografia da marca (Benjamin)
+    com leve espaçamento entre letras — estilo testado e aprovado com o Davi
+    antes de implementar (ver memória do projeto)."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = _fit_to_page(_open_slide_image(cover_bytes), page_size)
+    draw = ImageDraw.Draw(img)
+    font_size = round(page_size[1] * 0.083)
+    font = ImageFont.truetype(_COVER_FONT_PATH, font_size)
+
+    text = (env_name or "").strip().upper()
+    if not text:
+        return img
+    spacing = round(font_size * 0.155)
+    widths = [draw.textbbox((0, 0), ch, font=font)[2] for ch in text]
+    total_w = sum(widths) + spacing * (len(text) - 1)
+    bbox = draw.textbbox((0, 0), text, font=font)
+    th = bbox[3] - bbox[1]
+
+    x = (img.width - total_w) / 2
+    y = (img.height - th) / 2 - bbox[1]
+    for ch, w in zip(text, widths):
+        draw.text((x, y), ch, font=font, fill=_COVER_TEXT_COLOR)
+        x += w + spacing
+    return img
+
+
+@router.get("/{project_id}/environments/{environment_id}/cover.png")
+def get_environment_cover(project_id: str, environment_id: str, request: Request):
+    """Gera na hora a capa daquele ambiente (fundo do modelo + nome do
+    ambiente escrito por cima) — usada como fileUrl de um slide "capa" no
+    /deck (visualizador animado)."""
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import _db, _require_db, require_user
+
+    require_user(request)
+    _require_db()
+    with _db() as conn, conn.cursor() as cur:
+        cur.execute("SELECT template_id FROM client_projects WHERE id = %s", (project_id,))
+        project = cur.fetchone()
+        if not project:
+            raise HTTPException(404, "Projeto não encontrado.")
+        template_id = project[0]
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+        cover_row = None
+        if template_id:
+            cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+            cover_row = cur.fetchone()
+        cur.execute("SELECT name FROM client_environments WHERE id = %s", (environment_id,))
+        env_row = cur.fetchone()
+    if not cover_row or not cover_row[0] or not env_row:
+        raise HTTPException(404, "Capa não disponível.")
+    cover_bytes = storage.get(cover_row[0])
+    if cover_bytes is None:
+        raise HTTPException(404, "Arquivo de capa não encontrado.")
+    img = _render_environment_cover(cover_bytes, env_row[0], _TV_PX)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
+
+
 @router.get("/{project_id}/deck.pdf")
 def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
     """Exporta o deck (abertura + ambientes + fechamento) como PDF de imagens
@@ -1313,6 +1489,7 @@ def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
             template_id = fallback[0] if fallback else None
 
         abertura_keys, fechamento_keys = [], []
+        cover_key = None
         if template_id:
             cur.execute(
                 "SELECT storage_key, is_closing FROM institutional_slides "
@@ -1321,19 +1498,38 @@ def get_deck_pdf(project_id: str, request: Request, target: str = "a4"):
             )
             for storage_key, is_closing in cur.fetchall():
                 (fechamento_keys if is_closing else abertura_keys).append(storage_key)
+            cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+            cover_row = cur.fetchone()
+            cover_key = cover_row[0] if cover_row else None
 
-        cur.execute(_ordered_images_sql("storage_key"), (project_id,))
-        ambiente_keys = [r[0] for r in cur.fetchall()]
+        cur.execute(_ordered_images_sql("storage_key, ce.name, ce.id"), (project_id,))
+        ambiente_rows = cur.fetchall()
 
-    ordered_keys = abertura_keys + ambiente_keys + fechamento_keys
-    if not ordered_keys:
+    if not abertura_keys and not ambiente_rows and not fechamento_keys:
         raise HTTPException(400, "Este projeto ainda não tem slides para exportar.")
 
+    cover_bytes = storage.get(cover_key) if cover_key else None
+
     images = []
-    for storage_key in ordered_keys:
+    for storage_key in abertura_keys:
         data = storage.get(storage_key)
         if data is not None:
             images.append(_fit_to_page(_open_slide_image(data), page_size))
+
+    last_env_id = object()  # sentinel: nunca bate com um id de verdade nem com None
+    for storage_key, env_name, env_id in ambiente_rows:
+        if cover_bytes and env_id and env_id != last_env_id:
+            images.append(_render_environment_cover(cover_bytes, env_name, page_size))
+            last_env_id = env_id
+        data = storage.get(storage_key)
+        if data is not None:
+            images.append(_fit_to_page(_open_slide_image(data), page_size))
+
+    for storage_key in fechamento_keys:
+        data = storage.get(storage_key)
+        if data is not None:
+            images.append(_fit_to_page(_open_slide_image(data), page_size))
+
     if not images:
         raise HTTPException(400, "Nenhum arquivo de slide disponível para exportar.")
 
@@ -1411,6 +1607,7 @@ def get_shared_deck(token: str):
             template_id = fallback[0] if fallback else None
 
         abertura, fechamento = [], []
+        has_cover = False
         if template_id:
             cur.execute(
                 "SELECT id, caption, is_closing FROM institutional_slides "
@@ -1423,16 +1620,61 @@ def get_shared_deck(token: str):
                     "fileUrl": f"/api/presentations/share/{token}/slide/{r[0]}/file",
                 }
                 (fechamento if r[2] else abertura).append(item)
+            cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+            cover_row = cur.fetchone()
+            has_cover = bool(cover_row and cover_row[0])
 
-        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name"), (project_id,))
-        ambientes = [
-            {
-                "kind": "ambiente", "id": r[0], "caption": r[2] or ROOM_LABELS.get(r[1], r[1]),
-                "fileUrl": f"/api/presentations/share/{token}/image/{r[0]}/file",
-            }
-            for r in cur.fetchall()
-        ]
+        cur.execute(_ordered_images_sql("project_images.id, room_type, ce.name, ce.id"), (project_id,))
+        ambientes = []
+        last_env_id = object()
+        for r in cur.fetchall():
+            image_id, room_type, env_name, env_id = r
+            if has_cover and env_id and env_id != last_env_id:
+                ambientes.append({
+                    "kind": "capa", "id": f"capa-{env_id}", "caption": env_name,
+                    "fileUrl": f"/api/presentations/share/{token}/environment/{env_id}/cover.png",
+                })
+                last_env_id = env_id
+            ambientes.append({
+                "kind": "ambiente", "id": image_id, "caption": env_name or ROOM_LABELS.get(room_type, room_type),
+                "fileUrl": f"/api/presentations/share/{token}/image/{image_id}/file",
+            })
     return {"clientName": client_name, "slides": abertura + ambientes + fechamento}
+
+
+@router.get("/share/{token}/environment/{environment_id}/cover.png")
+def get_shared_environment_cover(token: str, environment_id: str):
+    from fastapi.responses import Response
+
+    from app import storage
+    from app.main import DB_ENABLED, _db
+
+    if not DB_ENABLED:
+        raise HTTPException(404, "Apresentação não encontrada.")
+    with _db() as conn, conn.cursor() as cur:
+        project = _project_by_share_token(cur, token)
+        if not project:
+            raise HTTPException(404, "Link inválido.")
+        template_id = project[2]
+        if not template_id:
+            cur.execute("SELECT id FROM presentation_templates ORDER BY created_at LIMIT 1")
+            fallback = cur.fetchone()
+            template_id = fallback[0] if fallback else None
+        cover_row = None
+        if template_id:
+            cur.execute("SELECT cover_image_key FROM presentation_templates WHERE id = %s", (template_id,))
+            cover_row = cur.fetchone()
+        cur.execute("SELECT name FROM client_environments WHERE id = %s", (environment_id,))
+        env_row = cur.fetchone()
+    if not cover_row or not cover_row[0] or not env_row:
+        raise HTTPException(404, "Capa não disponível.")
+    cover_bytes = storage.get(cover_row[0])
+    if cover_bytes is None:
+        raise HTTPException(404, "Arquivo de capa não encontrado.")
+    img = _render_environment_cover(cover_bytes, env_row[0], _TV_PX)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 @router.get("/share/{token}/slide/{slide_id}/file")

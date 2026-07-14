@@ -136,7 +136,7 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-view="projects">Apresentações</button>
-  <button class="tab-btn" data-view="templates">Abertura / Fechamento</button>
+  <button class="tab-btn" data-view="templates">Abertura / Fechamento / Capa</button>
 </nav>
 
 <main>
@@ -180,10 +180,20 @@
     </div>
   </section>
 
-  <!-- ---------------- Abertura / Fechamento ---------------- -->
+  <!-- ---------------- Abertura / Fechamento / Capa ---------------- -->
   <section class="view" id="view-templates">
-    <h2>Abertura / Fechamento</h2>
-    <div class="muted">Salve os modelos de abertura e fechamento</div>
+    <h2>Abertura / Fechamento / Capa</h2>
+    <div class="muted">Salve os modelos de abertura, fechamento e a capa de ambiente</div>
+
+    <h3>Capa (JPG)</h3>
+    <div class="muted" style="font-size:11.5px; margin-bottom:6px;">Imagem de fundo única, reaproveitada em toda apresentação — o nome de cada ambiente é escrito por cima automaticamente ao montar o deck.</div>
+    <div class="form-row">
+      <input type="file" id="coverUpload" accept="image/jpeg" />
+      <button class="primary" id="coverAddBtn">Salvar Capa</button>
+      <button class="danger" id="coverRemoveBtn" style="display:none;">Remover capa</button>
+    </div>
+    <img id="coverPreview" style="display:none; max-width:320px; border-radius:8px; margin-top:10px;" />
+    <div class="empty" id="coverEmpty">Nenhuma capa cadastrada ainda.</div>
 
     <h3>Abertura</h3>
     <div class="form-row">
@@ -713,7 +723,57 @@
     const slides = await api(`/api/presentations/templates/${currentTemplateId}/slides`);
     renderSlideGroup(slides.filter(s => !s.isClosing), "openGrid", "openEmpty");
     renderSlideGroup(slides.filter(s => s.isClosing), "closeGrid", "closeEmpty");
+    loadTemplateCover();
   }
+
+  async function loadTemplateCover() {
+    const templates = await api("/api/presentations/templates");
+    const current = templates.find(t => t.id === currentTemplateId);
+    const preview = document.getElementById("coverPreview");
+    const empty = document.getElementById("coverEmpty");
+    const removeBtn = document.getElementById("coverRemoveBtn");
+    if (current && current.hasCover) {
+      preview.src = `/api/presentations/templates/${currentTemplateId}/cover/file?t=${Date.now()}`;
+      preview.style.display = "block";
+      empty.style.display = "none";
+      removeBtn.style.display = "inline-block";
+    } else {
+      preview.style.display = "none";
+      empty.style.display = "block";
+      removeBtn.style.display = "none";
+    }
+  }
+
+  document.getElementById("coverAddBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("coverUpload");
+    const btn = document.getElementById("coverAddBtn");
+    if (!fileInput.files.length) { toast("Escolha um arquivo JPG."); return; }
+    const file = fileInput.files[0];
+    if (file.type !== "image/jpeg") { toast("A capa precisa ser um arquivo JPG."); return; }
+    const fd = new FormData();
+    fd.append("image", file);
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Enviando…";
+    try {
+      const res = await fetch(`/api/presentations/templates/${currentTemplateId}/cover`, { method: "POST", body: fd });
+      if (!res.ok) { toast("Não foi possível enviar a capa."); return; }
+      fileInput.value = "";
+      toast("Capa salva.");
+      loadTemplateCover();
+    } catch (_) {
+      toast("Erro de conexão.");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
+  document.getElementById("coverRemoveBtn").addEventListener("click", async () => {
+    if (!confirm("Remover a capa de ambiente atual?")) return;
+    await api(`/api/presentations/templates/${currentTemplateId}/cover`, { method: "DELETE" });
+    loadTemplateCover();
+  });
 
   function renderSlideGroup(slides, gridId, emptyId) {
     const grid = document.getElementById(gridId);
