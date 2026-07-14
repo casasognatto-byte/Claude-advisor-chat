@@ -52,7 +52,11 @@ services:
       - key: PUBLIC_BASE_URL
         value: https://chat.casasognatto.com.br   # usado nos links de convite/redefinição de senha
       - key: IMAGE_ENGINE
-        value: stub   # trocar para "nanobanana" quando GOOGLE_API_KEY estiver configurada
+        value: nanobanana   # 14/07/2026: GOOGLE_API_KEY já configurada há tempo — deixado em
+        # "stub" neste arquivo por engano fazia o valor voltar a cair pra stub sempre que o
+        # Render sincronizava as variáveis a partir do blueprint, desfazendo a troca manual
+        # feita no painel (achado real: 3 renders de teste da Isabela saíram com um arquivo
+        # falso de ~40 bytes em vez de imagem de verdade, mesmo com o job marcado "concluído").
       - key: R2_ACCOUNT_ID
         sync: false   # Biblioteca de Apresentações — Cloudflare R2. Sem isso, cai pra disco local (não persiste)
       - key: R2_ACCESS_KEY_ID
