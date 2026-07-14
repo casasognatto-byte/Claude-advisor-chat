@@ -857,3 +857,29 @@ eu ir atrás dessa conversa específica em produção. Avisar se preferir que eu
 8001, roda `uvicorn app.main:app --reload` a partir do `.venv`) pra testar via
 `preview_start` — não estava versionado antes, fica como conveniência pras próximas
 sessões (não sincroniza por git, mas sincroniza pela pasta OneDrive normalmente).
+
+## Sessão 14/07/2026: filtro Todos/pessoa na sidebar + e-mail via Gmail
+
+**Bug real corrigido — filtro "Todos/pessoa" da sidebar não filtrava nada** (`0fb3310`):
+Davi reportou que selecionar "Taynara" ou "Guilherme" no dropdown continuava mostrando
+a mesma lista. Causa: a sidebar hoje mostra principalmente a árvore de clientes/
+ambientes (`/api/presentations/tree`), não a lista simples de conversas — e o filtro só
+tinha sido ligado à lista de conversas soltas ("Sem cliente"), nunca à árvore. Corrigido:
+`client_environments` já tinha `created_by`; `/tree` passou a devolver esse campo por
+ambiente, e `renderList()` (index.html) esconde ambientes/clientes que não batem com o
+dono selecionado. Arrastar-e-soltar de ambientes fica desabilitado enquanto um dono
+específico está filtrado (evita embaralhar `sort_order` dos ambientes escondidos).
+Testado via ASGI in-process (backend) + confirmado ao vivo no Render após deploy.
+
+**E-mail transacional trocado de KingHost pra Gmail** (`dcd2496`) — pedido do Davi: usar
+`casasognatto@gmail.com` (conta já em uso pela empresa) em vez da caixa
+`naoresponda@casasognatto.com.br` do KingHost, que nunca foi confirmada funcionando de
+verdade em produção. `render.yaml`/`.env.example` atualizados: `SMTP_HOST=smtp.gmail.com`,
+`SMTP_PORT=587`, `SMTP_USER=casasognatto@gmail.com`, `EMAIL_FROM=Casa Sognatto
+<casasognatto@gmail.com>`. `SMTP_PASSWORD` continua secreto (`sync: false`) — precisa ser
+uma **Senha de app** do Gmail (`myaccount.google.com/apppasswords`, exige verificação em
+2 etapas ativada na conta), nunca a senha normal. Davi gerou a senha de app e colou no
+painel do Render; **testado de ponta a ponta em produção** (disparei "esqueci minha
+senha" real pra `davinogueira@casasognatto.com.br`, Davi confirmou recebimento no Gmail)
+— fluxo de convite/confirmação de cadastro e redefinição de senha por e-mail está
+funcionando de verdade agora, não só simulado em console.
