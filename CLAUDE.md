@@ -972,3 +972,40 @@ https://github.com/casasognatto-byte/Claude-advisor-chat.git main:main` (URL exp
 HTTPS, sem alterar o remote `origin` persistente) — o Git Credential Manager desta máquina
 já tinha uma credencial funcionando. Se isso voltar a falhar numa sessão futura nesta
 mesma máquina, tentar esse mesmo comando antes de mexer na configuração do remote.
+
+## Sessão 15/07/2026 (continuação): auditoria completa dos swatches de cor — 30/51 com marca d'água
+
+Davi pediu pra analisar TODAS as 51 imagens cadastradas em
+`app/static/color_swatches/` e tirar/ignorar qualquer texto nelas. Abri e conferi
+visualmente uma por uma (não só as 3 que eu já tinha flagrado antes) — achado bem maior
+do que o esperado:
+
+**30 das 51 imagens (quase 60%) têm um texto de marca d'água do catálogo original
+gravado direto na foto** — quase sempre "Padrão\nampliado", num dos dois cantos
+superiores, sobre um fundo com sombra/borda arredondada de card de produto. Padrão
+visual idêntico entre todas as contaminadas, sugerindo que vieram todas da mesma fonte
+(provável Duratex — as duas que eu já tinha achado antes, LOURO e PAU_FERRO, são dessa
+marca). As da Arauco (ex: NOGUEIRA_CAIENA, ABSOLUTO, BLUSH, TABASCO) em geral vieram
+limpas.
+
+**Lista completa das 30 contaminadas** (pra quem for recortar de novo a partir dos
+catálogos oficiais, se um dia for feito manualmente): ACACIA_CARMEL, AREAL, ATENNA,
+BEIGE, BETON, BRANCO_SUPREMO, CACAO, CANELA, CERAMIK, CINZA_CRISTAL, CINZA_PURO,
+CONCRETO_DECOR, CONNECT, CRISTALINA, DAMASCO, EBANO, ESCARLATE, FRAPE, GRAFITO, GRIS,
+JADE, LINHO, LINO_PIOMBO, LORD, LOURO, NOCE_NATURALE, NOGUEIRA_FLORIDA, NOGUEIRA_PERSA,
+PAU_FERRO, SALVIA, SAL_ROSA.
+
+**Decisão de correção**: em vez de tentar recortar 30 imagens sem conferir cada corte
+visualmente (risco real de cortar textura de verdade por engano, ou deixar sobra de
+texto), optei pela correção mais segura e abrangente — **instruir o modelo a ignorar
+qualquer texto/marca d'água/logotipo nas fotos de referência de cor**, sempre, mesmo nas
+que já estão limpas hoje (cobre também qualquer swatch novo que o Davi mandar no
+futuro). Implementado em `app/image_engines.py` (commit `0891c10`): instrução explícita
+"IGNORE completamente qualquer texto/marca/logotipo visível" em cada referência de cor
+individual, mais reforço no lembrete final (mesmo padrão de recência da correção de
+fidelidade anterior).
+
+**Pendente**: teste visual contra a API real (sem chave disponível aqui). Se o Davi
+quiser eliminar o problema na raiz (não só mitigar via prompt), a opção mais robusta a
+médio prazo é re-recortar essas 30 imagens dos catálogos oficiais sem a marca d'água —
+não fiz isso agora por ser um trabalho manual grande e arriscado de fazer às cegas.
