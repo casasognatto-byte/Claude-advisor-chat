@@ -883,3 +883,92 @@ painel do Render; **testado de ponta a ponta em produção** (disparei "esqueci 
 senha" real pra `davinogueira@casasognatto.com.br`, Davi confirmou recebimento no Gmail)
 — fluxo de convite/confirmação de cadastro e redefinição de senha por e-mail está
 funcionando de verdade agora, não só simulado em console.
+
+## Sessão 14/07/2026 (noite): 15 commits que ficaram sem documentar — resumo pra fechar a lacuna
+
+Este arquivo não foi atualizado durante uma sessão inteira (commits `ac728a7` até
+`f18e129`) — resumo feito numa sessão seguinte (15/07/2026) revisando `git log --stat`
+pra não perder o contexto. Nota recorrente nessa sessão: várias mudanças foram "testadas"
+só por lógica/backend porque **login em produção estava bloqueado por regra de
+segurança** — pendente de confirmação visual do Davi em mais de um item abaixo.
+
+- **Confidencialidade (2 correções reais)**: a palavra "advisor" (nome literal de uma
+  ferramenta interna, `advisor_20260301`) aparecia em 5 lugares visíveis ao usuário —
+  trocada por linguagem que descreve o comportamento sem nomear o mecanismo. Separado
+  disso, o texto de "preâmbulo" que o executor escreve antes de usar uma ferramenta
+  interna estava vazando colado à resposta final na mesma bolha — corrigido em
+  `app/main.py` (`_extract()`), só o texto depois da última ferramenta resolvida vira a
+  resposta de verdade.
+- **Sogno vira tutor da plataforma**: quando percebe que a pessoa é nova/não sabe onde
+  achar um recurso, explica os passos (anexar+Gerar, Refazer, Cores, Prompts,
+  Apresentações) e convida a perguntar. Ganhou também conhecimento real sobre os
+  próprios recursos da plataforma (bloco novo no `DEFAULT_SYSTEM_PROMPT`) — achado real:
+  perguntado "qual a função do Inspetor de Render?", respondeu que não achou nada sobre
+  isso "no software da Simonetto" (achava que era produto externo). Corrigido.
+- **Cores oficiais — ficou bem mais preciso** (`app/materials.py`, `app/image_engines.py`,
+  `app/image.py`): antes só inseria o NOME da cor no prompt; agora anexa a FOTO REAL do
+  swatch como imagem de referência (46 das 74 cores da planilha têm swatch real, recortado
+  manualmente dos catálogos oficiais 2026 — Arauco, Duratex, Berneck; Guararapes não tem
+  swatch isolado, fica só com texto). Campo obrigatório novo: **qual móvel** recebe cada
+  cor selecionada (`color_targets`, JSON `[{id,target}]` em `image_jobs`), reaproveitado
+  automaticamente pelo "Refazer". **Achado de qualidade, não corrigido ainda**: pelo menos
+  3 swatches (`NOGUEIRA_FLORIDA.png`, `LOURO.png`, `PAU_FERRO.png`) têm texto de
+  marketing/watermark do catálogo gravado na imagem ("Match Perfeito!", "Padrão
+  ampliado") em vez de recorte limpo — vale conferir os outros 43 e recortar de novo os
+  contaminados (dá pra pedir pro Davi mandar os catálogos de novo, ou eu tentar recortar
+  se ele confirmar que é seguro).
+- **Diretor recebe cópia oculta (BCC) de todo e-mail de redefinição de senha**
+  (`PASSWORD_RESET_BCC`, default cai pro Gmail da empresa) — via de acesso de backup pra
+  ele completar reset de senha de qualquer usuário, mesmo alguém desligado.
+- **Fluxo de render em lote** (pedido do Davi, `app/static/index.html`): em vez de gerar
+  ambiente por ambiente esperando terminar, agora dá pra "Enviar" vários ambientes (cada
+  um com sua imagem/cor/prompt guardados, sem gerar ainda) e depois um botão "Gerar
+  renders (N)" dispara todos de uma vez, agrupados por cliente (nunca mistura ambientes de
+  clientes diferentes). Ambientes já enviados ganham um ✓ na árvore lateral. **Não
+  confirmado visualmente** — só testado por lógica isolada (login bloqueado nessa sessão).
+- 🔴 **Bug real em produção, já corrigido**: `IMAGE_ENGINE` voltou pra `stub` no painel do
+  Render (a Julia testou um render real pra cliente "Isabela", 3 imagens saíram como
+  placeholder de ~40 bytes, sem quebrar visivelmente o fluxo — status aparecia "concluído"
+  normalmente). Causa provável: `render.yaml` ainda declarava `stub` como valor — se o
+  Render sincronizar do blueprint, sobrescreve qualquer troca manual no painel. Corrigido
+  o `render.yaml` pra não repetir. **Os 3 renders da Isabela não têm conserto retroativo —
+  precisam de "Refazer".**
+- **UI**: botão "+ Novo render" → "**+ Novo cliente**" (mais claro sobre o que faz);
+  última imagem de Abertura de cada modelo agora recebe o **nome real do cliente**
+  desenhado por cima dinamicamente (mesmo mecanismo da capa de ambiente) em vez do texto
+  fixo "NOME DO CLIENTE" — **pendente do Davi: reenviar a arte de Abertura de cada modelo
+  (Simonetto, Stimmo etc.) SEM esse texto fixo**, senão fica sobreposto ao nome real;
+  prompts pré-definidos ganharam ícone 🗑 direto na lista (em vez de botão separado no
+  painel de edição); seção "Sem cliente" removida da sidebar (toda conversa/render deve
+  ficar vinculada a um cliente).
+
+## Sessão 15/07/2026: fidelidade reforçada (móveis inventados + parede alterada)
+
+Davi flagrou com evidência visual (2 pares de imagem: closet e quarto) que o Sogno estava
+**quebrando a regra inegociável de fidelidade** — inventou uma poltrona num canto vazio de
+um closet, e transformou uma parede lisa de quarto em painel ripado. A instrução de
+fidelidade (`FIDELITY_BASE_PROMPT`, `app/image.py`) já proibia "inventar objetos", mas não
+nomeava especificamente "móveis de decoração avulsos" nem "padrão/textura de parede" — o
+modelo parece tratar poltrona como "acabamento" e ripado como "melhoria de material" em
+vez de alteração de design.
+
+**Corrigido** (`3b0a72e`, já publicado): duas proibições nomeadas explicitamente
+(mobiliário avulso — poltrona/cadeira/banco/pufe/etc.; padrão de parede — ripado/réguas/
+sarrafeado). Também corrigido efeito de recência: a regra de fidelidade só aparecia no
+INÍCIO do prompt — se havia referências de cor anexadas, a última coisa que o modelo lia
+antes de gerar eram as instruções de cor, não a restrição de fidelidade. Adicionado um
+lembrete final tanto no texto principal (`FIDELITY_CLOSING_REMINDER`) quanto depois de
+TODAS as imagens de referência de cor (`app/image_engines.py`) — o prompt sempre termina
+reafirmando a regra agora, verificado estruturalmente (sem chave real disponível pra
+testar visualmente). **Pendente: Davi testar de novo os mesmos 2 casos (closet e quarto)
+depois do deploy pra confirmar que a correção realmente ajudou** — reforço de prompt nunca
+é garantia 100%, é mitigação.
+
+**Nota de ambiente nova (máquina sem a chave SSH)**: esta sessão rodou numa máquina que não
+tem `~/.ssh/id_ed25519` (a chave foi gerada só na outra máquina, não sincroniza — fica fora
+da pasta OneDrive, no perfil do usuário). `git push` pelo remote configurado (SSH) falha
+aqui com "Host key verification failed". Contorno usado: `git push
+https://github.com/casasognatto-byte/Claude-advisor-chat.git main:main` (URL explícita por
+HTTPS, sem alterar o remote `origin` persistente) — o Git Credential Manager desta máquina
+já tinha uma credencial funcionando. Se isso voltar a falhar numa sessão futura nesta
+mesma máquina, tentar esse mesmo comando antes de mexer na configuração do remote.
