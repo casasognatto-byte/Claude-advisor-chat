@@ -71,6 +71,13 @@ class NanoBananaEngine:
         # Fotos reais de swatch (recortadas do catálogo oficial do fabricante,
         # ver app/materials.py) — dão ao modelo a cor/textura exata em vez de
         # só o nome em texto, que ele podia interpretar de forma imprecisa.
+        # Auditoria em 15/07/2026 (Davi pediu análise de todas as 51 imagens
+        # cadastradas): 30 delas têm um texto de marca d'água do catálogo
+        # original gravado na própria foto ("Padrão ampliado", geralmente num
+        # canto superior) — não dá pra confiar que todo swatch novo que o
+        # Davi mandar no futuro venha limpo, então a instrução abaixo sempre
+        # avisa pra ignorar texto/marca d'água na referência, independente da
+        # imagem específica.
         for ref in reference_images or []:
             target = (ref.get("target") or "").strip()
             # Com o móvel-alvo preenchido (modal de Cores, ver index.html),
@@ -80,7 +87,10 @@ class NanoBananaEngine:
             where = f"no(s) seguinte(s) móvel(is): {target}" if target else "onde a instrução acima indicar"
             parts.append({
                 "text": f"Referência exata de cor/material — {ref['name']} (linha {ref['brand']}). "
-                        f"Aplique esta cor/textura precisamente {where}."
+                        f"Aplique esta cor/textura precisamente {where}. Esta foto de referência pode "
+                        "conter texto, marca d'água, legenda ou logotipo do catálogo original — "
+                        "IGNORE completamente qualquer texto/marca/logotipo visível nela; use só a cor, "
+                        "o padrão e a textura do material, nunca reproduza texto nenhum no render final."
             })
             parts.append({
                 "inline_data": {
@@ -97,7 +107,9 @@ class NanoBananaEngine:
             # frase curta, de propósito depois de tudo.
             parts.append({
                 "text": "Reforçando: use as referências de cor/material só onde indicado; "
-                        "não adicione nenhum móvel, objeto ou padrão de parede novo."
+                        "não adicione nenhum móvel, objeto ou padrão de parede novo; ignore "
+                        "qualquer texto/marca d'água/logotipo que apareça nas fotos de referência "
+                        "de cor — nunca escreva ou reproduza texto nenhum no render final."
             })
         body = {"contents": [{"parts": parts}]}
         headers = {"x-goog-api-key": self._api_key(), "Content-Type": "application/json"}
