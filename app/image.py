@@ -24,6 +24,20 @@ DEFAULT_ENGINE = os.environ.get("IMAGE_ENGINE", "stub")
 # regra inegociável do Davi (08/07/2026): a IA nunca pode alterar o projeto
 # de interiores por conta própria. Só muda o que for pedido explícita e
 # pontualmente nas instruções abaixo dessa base.
+#
+# Reforçado em 15/07/2026: Davi flagrou dois casos reais de violação em
+# produção — uma poltrona/cadeira inventada num canto vazio de um closet, e
+# uma parede lisa de quarto virando painel ripado. A instrução original já
+# cobria "não invente objetos/cômodos", mas não nomeava especificamente
+# "móveis de decoração avulsos" (poltrona, banco, pufe — o modelo parece
+# tratar isso como "acabamento" em vez de "objeto novo") nem "padrão/textura
+# de parede" (ripado, réguas, sarrafeado — o modelo parece interpretar como
+# "melhoria de material" em vez de alteração de design). Adicionadas as duas
+# proibições nomeadas explicitamente. Também movido um resumo da regra pro
+# FINAL do prompt (depois das instruções da arquiteta e das referências de
+# cor) — o texto acaba com a mesma restrição com que começa, pra não perder
+# força por efeito de recência (a última coisa que o modelo lê antes de
+# gerar é sempre "não invente nada", não a instrução específica da vez).
 FIDELITY_BASE_PROMPT = (
     "Transforme esta imagem em um render fotorrealista. Regra inegociável: não "
     "altere o projeto de interiores em nada além do que for pedido explicitamente "
@@ -31,21 +45,39 @@ FIDELITY_BASE_PROMPT = (
     "as mesmas proporções e posições, e a mesma cor e textura de móveis, pedras e "
     "paredes do projeto original. Não invente cômodos, ambientes, portas, janelas, "
     "móveis, nichos, prateleiras, torres, colunas ou objetos que não estejam na "
-    "imagem de referência — inclusive nas bordas da imagem: se um móvel, parede ou "
-    "elemento aparece cortado/parcial na borda, mantenha ele exatamente cortado do "
-    "mesmo jeito, NÃO complete, estenda nem imagine o que viria depois da borda. A "
-    "composição, o enquadramento e os limites da cena devem ser idênticos ao "
-    "original — apenas a qualidade visual (luz, textura, material, fotorrealismo) "
-    "muda. Só mude cor, textura, material, iluminação ou decoração de algo "
-    "específico se uma instrução abaixo pedir isso pontualmente."
+    "imagem de referência — isso inclui NÃO adicionar nenhuma peça de decoração ou "
+    "mobiliário avulso (poltrona, cadeira, banco, pufe, mesa lateral, tapete, "
+    "objeto decorativo) em espaços vazios da imagem, mesmo que pareça combinar "
+    "esteticamente com o ambiente. Também NÃO altere o desenho/padrão de nenhuma "
+    "parede ou superfície — se a parede original é lisa, o render tem que "
+    "continuar liso; não adicione ripado, réguas, sarrafeado, textura ou relevo "
+    "que não existia no original, mesmo que fique com aparência mais elaborada. "
+    "Inclusive nas bordas da imagem: se um móvel, parede ou elemento aparece "
+    "cortado/parcial na borda, mantenha ele exatamente cortado do mesmo jeito, "
+    "NÃO complete, estenda nem imagine o que viria depois da borda. A composição, "
+    "o enquadramento e os limites da cena devem ser idênticos ao original — apenas "
+    "a qualidade visual (luz, textura, material, fotorrealismo) muda. Só mude cor, "
+    "textura, material, iluminação ou decoração de algo específico se uma "
+    "instrução abaixo pedir isso pontualmente."
+)
+
+FIDELITY_CLOSING_REMINDER = (
+    "Lembrete final antes de gerar: não adicione nenhum móvel, objeto de "
+    "decoração ou padrão/textura de parede (ripado, réguas etc.) que não esteja "
+    "na imagem original, mesmo que as instruções acima peçam mudança de cor, "
+    "iluminação ou material em algo específico — tudo o mais permanece "
+    "exatamente como no projeto original."
 )
 
 
 def _build_prompt(architect_prompt: str) -> str:
     architect_prompt = (architect_prompt or "").strip()
     if not architect_prompt:
-        return FIDELITY_BASE_PROMPT
-    return f"{FIDELITY_BASE_PROMPT}\n\nInstruções específicas da arquiteta:\n{architect_prompt}"
+        return f"{FIDELITY_BASE_PROMPT}\n\n{FIDELITY_CLOSING_REMINDER}"
+    return (
+        f"{FIDELITY_BASE_PROMPT}\n\nInstruções específicas da arquiteta:\n"
+        f"{architect_prompt}\n\n{FIDELITY_CLOSING_REMINDER}"
+    )
 
 _EXT_BY_MIME = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
 
@@ -258,11 +290,6 @@ async def _run_image_job(
         _update_job(job_id, status="processing")
         asyncio.create_task(_run_render_params(job_id, prompt))
         reference_images = get_swatches(color_ids or [], targets=color_targets)
-        print(
-            f"[image job {job_id}] color_ids recebidos={color_ids!r} targets={color_targets!r} -> "
-            f"{len(reference_images)} swatch(es) anexado(s): "
-            f"{[(r['name'], r.get('target')) for r in reference_images]}"
-        )
         result_bytes, result_mime = await impl.generate(
             image_bytes, mime, _build_prompt(prompt), reference_images=reference_images
         )

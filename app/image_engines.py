@@ -88,6 +88,17 @@ class NanoBananaEngine:
                     "data": base64.b64encode(ref["bytes"]).decode("ascii"),
                 }
             })
+        if reference_images:
+            # A instrução de fidelidade já vem no texto principal (ver
+            # app/image.py, FIDELITY_CLOSING_REMINDER), mas essas imagens de
+            # referência de cor entram DEPOIS dela na sequência — sem isso, a
+            # última coisa que o modelo lê antes de gerar é "aplique esta
+            # cor/textura", não "não invente nada". Repete o essencial em uma
+            # frase curta, de propósito depois de tudo.
+            parts.append({
+                "text": "Reforçando: use as referências de cor/material só onde indicado; "
+                        "não adicione nenhum móvel, objeto ou padrão de parede novo."
+            })
         body = {"contents": [{"parts": parts}]}
         headers = {"x-goog-api-key": self._api_key(), "Content-Type": "application/json"}
         async with httpx.AsyncClient(timeout=90) as client:
