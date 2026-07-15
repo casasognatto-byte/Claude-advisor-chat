@@ -1009,3 +1009,35 @@ fidelidade anterior).
 quiser eliminar o problema na raiz (não só mitigar via prompt), a opção mais robusta a
 médio prazo é re-recortar essas 30 imagens dos catálogos oficiais sem a marca d'água —
 não fiz isso agora por ser um trabalho manual grande e arriscado de fazer às cegas.
+
+## Sessão 15/07/2026 (continuação, fim de sessão): recorte automatizado das 31 imagens
+
+Davi pediu pra eu mesmo fazer o recorte (em vez de só mitigar via prompt) e saiu logo
+em seguida — sessão terminou sem ele confirmar visualmente, registrar aqui pra próxima
+sessão saber o que já foi feito.
+
+**Feito (commit `66a1b25`, já publicado)**: script Python (Pillow, ver
+`fix_watermarks.py` — ficou só no scratchpad da sessão, não versionado, pode recriar se
+precisar reaproveitar) detecta automaticamente qual canto superior tem o texto (mede
+densidade de bordas) e substitui a região por um remendo do mesmo tamanho vindo de uma
+faixa limpa logo abaixo da própria imagem. Rodado nas 31 imagens contaminadas listadas
+na sessão anterior. **Conferidas visualmente TODAS uma a uma depois** (não só uma
+amostra) — 30 ficaram limpas de primeira; `NOGUEIRA_FLORIDA.png` teve uma falha real na
+primeira passada (texto de 3 linhas, formato diferente das outras 30 que tinham só
+"Padrão ampliado" em 2 linhas — a faixa padrão não cobriu tudo, ficou com texto
+fantasma/duplicado), restaurada do backup e corrigida com faixa maior (40% da altura em
+vez de 24%). **Resultado final: 31/31 sem nenhum texto legível remanescente**,
+confirmado por inspeção visual direta de cada arquivo.
+
+A instrução de "ignorar texto/marca d'água" no prompt (commit `0891c10`, sessão
+anterior) foi mantida no código mesmo assim — funciona como rede de segurança pra
+qualquer swatch novo que o Davi mandar no futuro (não passa por este script
+automaticamente, só os 31 já identificados foram corrigidos na origem).
+
+**Pendente real**: nunca testei contra a API de verdade (Nano Banana Pro) se o resultado
+final — swatch limpo + instrução de ignorar texto — realmente resolveu os dois problemas
+reportados (poltrona inventada, parede virando ripado, texto reproduzido). Pendências
+acumuladas pra confirmação visual do Davi quando ele voltar: (1) fidelidade — móveis/
+parede inventados, (2) texto de marca d'água nos swatches, (3) fluxo de render em lote.
+Sugiro testar os três juntos numa mesma sessão de imagens reais, já que todos mexem no
+mesmo pipeline de geração (`app/image.py`/`app/image_engines.py`).
