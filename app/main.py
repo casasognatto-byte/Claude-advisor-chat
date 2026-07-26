@@ -32,6 +32,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from starlette.middleware.proxy_headers import ProxyHeadersMiddleware
 from passlib.hash import bcrypt as bcrypt_hasher
 from pydantic import BaseModel
 
@@ -213,7 +214,14 @@ STORE_TZ = ZoneInfo("America/Campo_Grande")
 # Usuários vivem na tabela `users` (banco), não mais em variável de ambiente.
 # Papéis: "diretor" (acesso total, painel /admin) ou "membro" (uso normal).
 # Ninguém troca a própria senha — gestão é feita pelo diretor no painel /admin.
-SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+SECRET_KEY = (os.environ.get("SECRET_KEY") or "").strip()
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY não está configurada. Defina a variável no painel do Render "
+        "(ou no .env local) antes de iniciar o serviço."
+    )
+print(f"[auth] SECRET_KEY carregada do ambiente (tamanho {len(SECRET_KEY)} chars).")
+
 SESSION_MAX_AGE = int(os.environ.get("SESSION_MAX_AGE", str(60 * 60 * 12)))  # 12h
 COOKIE_SECURE = (os.environ.get("COOKIE_SECURE", "true").lower() != "false")
 _serializer = URLSafeTimedSerializer(SECRET_KEY, salt="advisor-chat-session")
@@ -432,9 +440,15 @@ STATIC_DIR = os.path.join(HERE, "static")
 client = anthropic.Anthropic()
 
 app = FastAPI(title="Casa Sognatto · Advisor Chat")
+# O Render termina SSL no edge e repassa requisições HTTP internamente.
+# Sem este middleware, o FastAPI não enxerga o protocolo real do cliente.
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
 _init_db()
 _init_users_db()
 _init_activity_log_db()
+
+print(f"[auth] COOKIE_SECURE={COOKIE_SECURE}, SESSION_MAX_AGE={SESSION_MAX_AGE}s")
 
 from app.admin import router as admin_router  # noqa: E402 (após _init_* por clareza)
 from app.code import init_code_db, router as code_router  # noqa: E402
@@ -598,13 +612,19 @@ def current_user(request: Request) -> dict | None:
     """Retorna {"username", "role"} do usuário logado, ou None se não autenticado."""
     token = request.cookies.get("session")
     if not token:
+        print(f"[auth] cookie 'session' ausente em {request.url.path}")
         return None
     try:
         payload = _serializer.loads(token, max_age=SESSION_MAX_AGE)
-    except (BadSignature, SignatureExpired):
+    except SignatureExpired:
+        print(f"[auth] cookie 'session' expirado em {request.url.path}")
+        return None
+    except BadSignature:
+        print(f"[auth] cookie 'session' com assinatura inválida em {request.url.path}")
         return None
     if isinstance(payload, dict) and payload.get("username"):
         return {"username": payload["username"], "role": payload.get("role", "membro")}
+    print(f"[auth] cookie 'session' sem username em {request.url.path}")
     return None
 
 

@@ -58,6 +58,15 @@
   .tokens { font-size: 11px; color: var(--muted); text-align: right; line-height: 1.5; flex: none; }
   .tokens b { color: var(--text-dim); font-weight: 600; }
 
+  /* Seletor de motor (Claude / Kimi) */
+  .engine-picker { display: flex; align-items: center; gap: 8px; }
+  .engine-btn { display: flex; align-items: center; gap: 6px; background: var(--glass-bg-soft); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+  .engine-btn:hover { border-color: var(--accent-border); color: var(--text); }
+  .engine-btn.active { border-color: var(--accent-border); color: var(--text); background: var(--accent-dim); }
+  .engine-btn svg { width: 16px; height: 16px; flex: none; }
+  #modelSel { display: none; }
+  #modelSel.visible { display: block; }
+
   main { flex: 1; overflow-y: auto; padding: 26px 22px; display: flex; flex-direction: column; gap: 14px; }
   .inner { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
   .msg { display: flex; gap: 10px; align-items: flex-end; animation: rise-in .28s ease; }
@@ -159,6 +168,16 @@
         <div class="h-title" id="hTitle">Nova conversa</div>
       </div>
       <div class="h-left">
+        <div class="engine-picker" id="enginePicker">
+          <button class="engine-btn active" data-engine="claude" title="Usar Claude">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z"/></svg>
+            Claude
+          </button>
+          <button class="engine-btn" data-engine="kimi" title="Usar Kimi">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="var(--bg-900)" font-size="11" font-weight="700" font-family="Inter, sans-serif">K</text></svg>
+            Kimi
+          </button>
+        </div>
         <select id="modelSel" title="Modelo desta conversa"></select>
         <div class="tokens">Tokens: <b><span id="tok-in">0</span></b> / <b><span id="tok-out">0</span></b></div>
         <a class="toggle" id="adminLinkTop" href="/admin" title="Painel do diretor" style="display:none;">⚙</a>
@@ -240,6 +259,7 @@
   let convSelectedIds = new Set();
   let models = [];
   let defaultModel = null;
+  let currentEngine = "claude"; // "claude" | "kimi"
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -251,7 +271,7 @@
 
   function uid() { return "k" + Date.now() + Math.random().toString(36).slice(2, 7); }
   function emptyTokens() { return { in: 0, out: 0 }; }
-  function emptyData() { return { apiMessages: [], view: [], tokens: emptyTokens(), model: null }; }
+  function emptyData() { return { apiMessages: [], view: [], tokens: emptyTokens(), engine: currentEngine, model: null }; }
   function active() { return conversations.find(c => c.id === activeId); }
 
   async function ensureData(c) {
@@ -259,6 +279,7 @@
     if (!c.data.apiMessages) c.data.apiMessages = [];
     if (!c.data.view) c.data.view = [];
     if (!c.data.tokens) c.data.tokens = emptyTokens();
+    if (!c.data.engine) c.data.engine = currentEngine;
     if (c.data.model == null) c.data.model = null;
     return c.data;
   }

@@ -21,6 +21,7 @@ fase futura de integração Kimi + Claude.
 import os
 from typing import Any
 
+import anthropic
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -33,15 +34,24 @@ MOONSHOT_BASE_URL = (os.environ.get("MOONSHOT_BASE_URL") or "https://api.moonsho
 CODE_DEFAULT_MODEL = os.environ.get("CODE_DEFAULT_MODEL", "kimi-k3")
 CODE_MAX_TOKENS = int(os.environ.get("CODE_MAX_TOKENS", "8192"))
 
+# Integração Claude no Sogno Code (opcional). Usa CODE_ANTHROPIC_API_KEY se
+# existir; senão, reusa ANTHROPIC_API_KEY do chat principal.
+ANTHROPIC_API_KEY_FOR_CODE = (
+    os.environ.get("CODE_ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+).strip()
+CODE_CLAUDE_DEFAULT_MODEL = os.environ.get("CODE_CLAUDE_DEFAULT_MODEL", "claude-sonnet-4-6")
+CODE_CLAUDE_MAX_TOKENS = int(os.environ.get("CODE_CLAUDE_MAX_TOKENS", "4096"))
+
 # E-mail do único usuário com acesso ao Sogno Code (ver docstring do módulo).
 CODE_MASTER_EMAIL = (
     os.environ.get("CODE_MASTER_EMAIL") or "davinogueira@casasognatto.com.br"
 ).strip().lower()
 
-# Modelos oferecidos no seletor da tela. `default` marca o modelo inicial das
-# conversas novas; CODE_DEFAULT_MODEL (ambiente) tem prioridade se estiver na
-# lista. Os IDs são os mesmos que a chave Moonshot do Davi já acessa.
+# Modelos oferecidos no seletor da tela. `provider` agrupa por motor;
+# `default` marca o modelo inicial das conversas novas.
 CODE_MODELS = [
+    {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6", "provider": "anthropic"},
+    {"id": "claude-opus-4-8", "label": "Claude Opus 4.8", "provider": "anthropic"},
     {"id": "kimi-k3", "label": "Kimi K3", "provider": "moonshot"},
     {"id": "kimi-k2.7-code", "label": "Kimi K2.7 Code", "provider": "moonshot"},
     {"id": "kimi-k2.7-code-highspeed", "label": "Kimi K2.7 Code (rápido)", "provider": "moonshot"},
@@ -72,9 +82,16 @@ DEFAULT_CODE_SYSTEM_PROMPT = (
 CODE_SYSTEM_PROMPT = (os.environ.get("CODE_SYSTEM_PROMPT") or "").strip() or DEFAULT_CODE_SYSTEM_PROMPT
 
 
-def _default_model() -> str:
-    valid = {m["id"] for m in CODE_MODELS}
-    return CODE_DEFAULT_MODEL if CODE_DEFAULT_MODEL in valid else CODE_MODELS[0]["id"]
+def _default_engine() -> str:
+    return "anthropic" if ANTHROPIC_API_KEY_FOR_CODE else "moonshot"
+
+
+def _default_model(provider: str | None = None) -> str:
+    provider = provider or _default_engine()
+    valid = [m["id"] for m in CODE_MODELS if m["provider"] == provider]
+    if provider == "anthropic":
+        return CODE_CLAUDE_DEFAULT_MODEL if CODE_CLAUDE_DEFAULT_MODEL in valid else (valid[0] if valid else "")
+    return CODE_DEFAULT_MODEL if CODE_DEFAULT_MODEL in valid else (valid[0] if valid else "")
 
 
 # --- Controle de acesso (só o usuário master) --------------------------------
@@ -132,8 +149,9 @@ def init_code_db() -> None:
 
 # --- Modelos de request -----------------------------------------------------
 class CodeChatRequest(BaseModel):
-    # Histórico completo da conversa (a API é stateless) + modelo da conversa.
+    # Histórico completo da conversa (a API é stateless) + motor/modelo.
     messages: list[dict[str, Any]]
+    engine: str | None = None  # "claude" | "kimi"
     model: str | None = None
 
 
