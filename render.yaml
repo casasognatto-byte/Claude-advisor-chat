@@ -13,10 +13,10 @@ services:
         # presos no buffer do Python e nunca aparecem nos logs do Render - achado real
         # investigando por que o "esqueci senha" travava sem erro visivel (2026-07-06)
       - key: SECRET_KEY
-        generateValue: true   # 08/07/2026: sem isso, o código caía num valor aleatório
-        # gerado a cada boot (ver app/main.py) — cada deploy derrubava a sessão de
-        # login de todo mundo. generateValue: true faz o Render gerar um valor uma
-        # única vez e mantê-lo fixo entre deploys.
+        sync: false   # SEGREDO — gere um valor fixo aleatório uma única vez e mantenha.
+        # Com generateValue: true, a sessão estava caindo entre mensagens no Render.
+        # Use para gerar: python -c "import secrets; print(secrets.token_hex(32))"
+        # Cole o valor no painel do Render. Todos precisarão logar novamente uma vez.
       - key: ANTHROPIC_API_KEY
         sync: false   # defina no painel do Render (Secret)
       - key: SYSTEM_PROMPT
