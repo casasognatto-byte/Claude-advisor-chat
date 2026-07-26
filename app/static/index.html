@@ -80,6 +80,13 @@
   .tokens b { color: var(--text-dim); font-weight: 600; }
   .tokens .g { color: var(--accent); }
 
+  /* Seletor de motor (Claude / Kimi) */
+  .engine-picker { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+  .engine-btn { display: flex; align-items: center; gap: 6px; background: var(--glass-bg-soft); border: 1px solid var(--glass-border); color: var(--muted); border-radius: 20px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+  .engine-btn:hover { border-color: var(--accent-border); color: var(--text); }
+  .engine-btn.active { border-color: var(--accent-border); color: var(--text); background: var(--accent-dim); }
+  .engine-btn svg { width: 16px; height: 16px; flex: none; }
+
   main { flex: 1; overflow-y: auto; padding: 26px 22px; display: flex; flex-direction: column; gap: 14px; }
   .inner { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
   .msg { display: flex; animation: rise-in .28s ease; } .msg.user { justify-content: flex-end; }
@@ -291,6 +298,16 @@
         <button class="toggle" id="downloadAllImagesBtn" title="Baixar todas as imagens geradas nesta conversa (.zip)">⬇</button>
       </div>
       <div class="h-left">
+        <div class="engine-picker" id="enginePicker">
+          <button class="engine-btn active" data-engine="claude" title="Usar Claude">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z"/></svg>
+            Claude
+          </button>
+          <button class="engine-btn" data-engine="kimi" title="Usar Kimi">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="10"/><text x="12" y="16" text-anchor="middle" fill="var(--bg-900)" font-size="11" font-weight="700" font-family="Inter, sans-serif">K</text></svg>
+            Kimi
+          </button>
+        </div>
         <div class="tokens">
           Executor: <b><span id="tok-exec-in">0</span></b> / <b><span id="tok-exec-out">0</span></b><br>
           <span class="g">Consultoria:</span> <b><span id="tok-adv-in">0</span></b> / <b><span id="tok-adv-out">0</span></b>
@@ -492,6 +509,7 @@
   let expandedClients = new Set();
   let activeEnvironmentId = null;
   let ownerFilterValue = "all"; // afeta tanto a árvore cliente/ambiente quanto as conversas soltas
+  let currentEngine = "claude"; // "claude" | "kimi"
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -510,6 +528,7 @@
     if (!c.data.apiMessages) c.data.apiMessages = [];
     if (!c.data.view) c.data.view = [];
     if (!c.data.tokens) c.data.tokens = emptyTokens();
+    if (!c.data.engine) c.data.engine = currentEngine;
     return c.data;
   }
   async function persist(c) {
@@ -962,15 +981,23 @@
 
   // ---------- Operações ----------
   function newConv() {
-    const c = { id: uid(), title: "Nova conversa", updatedAt: Date.now(), data: emptyData(), _new: true };
+    const c = { id: uid(), title: "Nova conversa", updatedAt: Date.now(), data: { ...emptyData(), engine: currentEngine }, _new: true };
     conversations.unshift(c); activeId = c.id; renderList(); renderChat(); renderStagedRow(); input.focus();
   }
   async function selectConv(id) {
     activeId = id;
     const c = active();
     activeEnvironmentId = (c && c.environmentId) || null;
-    if (c) await ensureData(c);
+    if (c) { await ensureData(c); setEngine(c.data.engine || "claude", false); }
     renderList(); renderChat(); renderStagedRow(); input.focus();
+  }
+  function setEngine(engine, persistChoice) {
+    currentEngine = engine === "kimi" ? "kimi" : "claude";
+    document.querySelectorAll("#enginePicker .engine-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.engine === currentEngine);
+    });
+    const c = active();
+    if (persistChoice && c && c.data) { c.data.engine = currentEngine; }
   }
   async function renameConv(id) {
     const c = conversations.find(x => x.id === id); if (!c) return;
@@ -1012,7 +1039,7 @@
     await persist(c);
 
     try {
-      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: c.data.apiMessages }) });
+      const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: c.data.apiMessages, engine: c.data.engine || currentEngine }) });
       setTyping(false);
       if (res.status === 401) { window.location.href = "/login"; return; }
       if (!res.ok) {
@@ -1940,6 +1967,9 @@
     }
   });
   document.getElementById("toggle").addEventListener("click", () => document.body.classList.toggle("collapsed"));
+  document.querySelectorAll("#enginePicker .engine-btn").forEach(btn => {
+    btn.addEventListener("click", () => { setEngine(btn.dataset.engine, true); });
+  });
   init();
 </script>
 </body>

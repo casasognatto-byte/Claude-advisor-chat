@@ -27,6 +27,7 @@ except ImportError:  # pragma: no cover
     pass
 
 import anthropic
+import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -47,6 +48,14 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "4096"))
 ADVISOR_MAX_USES = int(os.environ.get("ADVISOR_MAX_USES", "3"))
 ADVISOR_MAX_TOKENS = int(os.environ.get("ADVISOR_MAX_TOKENS", "2048"))
 WEB_SEARCH_MAX_USES = int(os.environ.get("WEB_SEARCH_MAX_USES", "3"))
+
+# --- Configuração do Kimi para o chat principal -----------------------------
+# Pode reusar a mesma chave do Sogno Code (MOONSHOT_API_KEY) ou ter uma chave
+# dedicada para o chat (KIMI_CHAT_API_KEY).
+KIMI_CHAT_API_KEY = (os.environ.get("KIMI_CHAT_API_KEY") or os.environ.get("MOONSHOT_API_KEY") or "").strip()
+KIMI_CHAT_BASE_URL = (os.environ.get("KIMI_CHAT_BASE_URL") or "https://api.moonshot.ai/v1").rstrip("/")
+KIMI_CHAT_MODEL = os.environ.get("KIMI_CHAT_MODEL", "kimi-k3")
+KIMI_CHAT_MAX_TOKENS = int(os.environ.get("KIMI_CHAT_MAX_TOKENS", "4096"))
 # Personalidade da IA da Casa Sognatto (padrão no código). Pode ser sobrescrita
 # pela variável de ambiente SYSTEM_PROMPT, se preferir configurar pelo Render.
 # Rebrand 08/07/2026: "Neusa" -> "Sogno" (pronúncia "Sonho"), assistente de
@@ -449,6 +458,7 @@ init_presentations_db()
 class ChatRequest(BaseModel):
     # Histórico completo da conversa (a API da Anthropic é stateless).
     messages: list[dict[str, Any]]
+    engine: str | None = None  # "claude" | "kimi"
 
 
 class LoginRequest(BaseModel):
@@ -902,10 +912,90 @@ def bulk_delete_own_conversations(body: ConvBulkDelete, request: Request):
     return {"deleted": len(rows)}
 
 
+# --- Motor Kimi (alternativa ao Claude no chat principal) --------------------
+def _chat_with_kimi(messages: list[dict], system: str) -> dict:
+    """Chama a API da Moonshot (Kimi) e devolve o mesmo formato de resposta do
+    /api/chat para que o frontend não precise saber qual motor respondeu."""
+    if not KIMI_CHAT_API_KEY:
+        raise HTTPException(500, "Chave da API do Kimi não está configurada no servidor.")
+
+    payload = {
+        "model": KIMI_CHAT_MODEL,
+        "messages": [{"role": "system", "content": system}] + messages,
+        "max_tokens": KIMI_CHAT_MAX_TOKENS,
+    }
+    try:
+        resp = httpx.post(
+            f"{KIMI_CHAT_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {KIMI_CHAT_API_KEY}"},
+            json=payload,
+            timeout=120,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(503, "Não foi possível conectar à API do Kimi.")
+
+    if resp.status_code >= 400:
+        detail = f"Erro da API do Kimi (HTTP {resp.status_code})."
+        try:
+            err = resp.json().get("error") or {}
+            if err.get("message"):
+                detail = err["message"]
+        except ValueError:
+            pass
+        raise HTTPException(resp.status_code, detail)
+
+    data = resp.json()
+    choices = data.get("choices") or [{}]
+    text = ""
+    msg = choices[0].get("message") or {}
+    content = msg.get("content")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        text = "\n".join(p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text")
+    text = text.strip()
+
+    usage_raw = data.get("usage") or {}
+    return {
+        "append": [{"role": "assistant", "content": text}],
+        "text": text,
+        "advisor": [],
+        "usage": {
+            "executor": {
+                "input_tokens": usage_raw.get("prompt_tokens") or 0,
+                "output_tokens": usage_raw.get("completion_tokens") or 0,
+            },
+            "advisor": None,
+            "advisor_calls": 0,
+        },
+    }
+
+
 # --- Rota principal do chat -------------------------------------------------
 @app.post("/api/chat")
 def chat(req: ChatRequest, request: Request):
     user = require_user(request)
+    engine = (req.engine or "claude").lower()
+
+    try:
+        from app.clickup_alert import is_vendor_inquiry, send_vendor_inquiry_alert
+
+        last_user_text = _last_user_text(req.messages)
+        if is_vendor_inquiry(last_user_text):
+            send_vendor_inquiry_alert(user["username"], last_user_text)
+    except Exception as e:  # alerta é um extra; nunca deve derrubar o chat
+        print(f"[chat] falha ao checar pergunta sobre stack de IA: {e}")
+
+    system_for_call = SYSTEM_PROMPT
+    if DB_ENABLED:
+        try:
+            system_for_call = f"{SYSTEM_PROMPT}\n\n{_sogno_context_block(user['username'])}"
+        except Exception as e:  # contexto é um extra; nunca deve derrubar o chat
+            print(f"[chat] falha ao montar contexto do Sogno: {e}")
+
+    if engine == "kimi":
+        return _chat_with_kimi(req.messages, system_for_call)
+
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise HTTPException(500, "ANTHROPIC_API_KEY não está configurada no servidor.")
 
@@ -1011,6 +1101,8 @@ def health():
         # Sogno Code (módulo de desenvolvimento, acesso restrito ao Davi):
         # sem MOONSHOT_API_KEY as rotas /api/code respondem 500 explicando.
         "code_enabled": bool(os.environ.get("MOONSHOT_API_KEY")),
+        # Motor Kimi no chat principal: ativo se KIMI_CHAT_API_KEY ou MOONSHOT_API_KEY estiver configurada.
+        "kimi_chat_enabled": bool(KIMI_CHAT_API_KEY),
         # R2 ausente = arquivos (imagens, apresentações) caem pro disco local do
         # servidor, que é apagado a cada deploy — ver app/storage.py.
         "r2_enabled": R2_ENABLED,
