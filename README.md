@@ -83,6 +83,22 @@ Abra http://127.0.0.1:8000
 
 (O fluxo é equivalente no Railway: mesmo Build/Start command e as mesmas variáveis de ambiente.)
 
+## Motor alternativo: Kimi
+
+No cabeçalho do chat, ao lado de **Sogno**, há dois botões: **Claude** e **Kimi**. Cada conversa pode usar um motor diferente, e a escolha fica salva com a conversa.
+
+- **Claude** → usa o padrão Executor + Advisor (`claude-sonnet-4-6` + `claude-opus-4-8`).
+- **Kimi** → usa a API da Moonshot (`kimi-k3` por padrão), sem advisor.
+
+Para ativar o Kimi no chat principal, configure uma das chaves abaixo. Se ambas estiverem ausentes, o botão Kimi ainda aparece, mas a requisição retorna erro explicando que a chave não está configurada.
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `KIMI_CHAT_API_KEY` | — | Chave dedicada do Kimi pro chat. Se omitida, reusa `MOONSHOT_API_KEY`. |
+| `KIMI_CHAT_MODEL` | `kimi-k3` | Modelo Kimi usado no chat. |
+| `KIMI_CHAT_MAX_TOKENS` | `4096` | Máximo de tokens da resposta do Kimi. |
+| `KIMI_CHAT_BASE_URL` | `https://api.moonshot.ai/v1` | Base URL da API Moonshot. |
+
 ## Configuração
 
 Tudo por variável de ambiente (ver `.env.example`):

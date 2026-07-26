@@ -14,10 +14,12 @@
   .sidebar { width: 280px; flex: none; background: var(--bg-900); border-right: 1px solid var(--glass-border); display: flex; flex-direction: column; transition: transform .2s ease, opacity .2s ease; z-index: 46; }
   body.collapsed .sidebar { width: 0; opacity: 0; pointer-events: none; }
   .sb-brand { padding: 18px 18px 16px; border-bottom: 1px solid var(--glass-border); }
-  .sb-brand .wordmark .sogno { font-size: 22px; }
-  .sb-brand .tagline { margin-top: 8px; font-family: 'Sackers'; font-size: 7.5px; letter-spacing: .38em; color: var(--muted); }
+  .sb-brand .wordmark { display: flex; align-items: flex-start; gap: 10px; }
+  .sb-brand .wordmark-text { display: flex; flex-direction: column; }
+  .sb-brand .wordmark .sogno { font-size: 22px; line-height: 1; }
+  .sb-brand .tagline { margin-top: 8px; font-family: 'Sackers'; font-size: 7.5px; letter-spacing: .38em; color: var(--muted); line-height: 1; }
   .wordmark img.key-icon { width: 13px; height: auto; flex: none; }
-  .code-badge { font-family: 'Sackers'; font-size: 8px; letter-spacing: .3em; padding: 4px 8px 4px 10px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 7px; }
+  .code-badge { font-family: 'Sackers'; font-size: 8px; letter-spacing: .3em; padding: 4px 8px 4px 10px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 7px; margin-left: auto; align-self: center; }
   .new-btn { margin: 14px 14px 0; padding: 12px; background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: 'Inter'; font-weight: 600; font-size: 12.5px; letter-spacing: .03em; display: flex; align-items: center; justify-content: center; gap: 8px; transition: box-shadow .2s ease, background .15s ease; }
   .new-btn:hover { background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-border), 0 8px 28px var(--accent-dim); }
   .nav-link { margin: 10px 14px 14px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-dim); text-decoration: none; font-size: 12.5px; font-weight: 600; letter-spacing: .03em; background: var(--glass-bg-soft); transition: border-color .15s ease, color .15s ease; }
@@ -127,10 +129,12 @@
     <div class="sb-brand">
       <div class="wordmark">
         <img class="key-icon" src="/static/brand/chave-cobre.svg" alt="" />
-        <div class="sogno">SOGNO</div>
+        <div class="wordmark-text">
+          <div class="sogno">SOGNO</div>
+          <div class="tagline">CASA SOGNATTO</div>
+        </div>
         <div class="code-badge">CODE</div>
       </div>
-      <div class="tagline">CASA SOGNATTO</div>
     </div>
     <button class="new-btn" id="new" title="Nova conversa de desenvolvimento">＋ Nova conversa</button>
     <a class="nav-link" href="/" title="Voltar pro Chat da equipe">💬 Chat</a>
