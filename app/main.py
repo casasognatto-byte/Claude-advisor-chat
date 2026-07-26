@@ -32,9 +32,13 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from passlib.hash import bcrypt as bcrypt_hasher
 from pydantic import BaseModel
+
+try:
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+except ImportError:  # pragma: no cover
+    ProxyHeadersMiddleware = None
 
 try:
     import psycopg2
@@ -442,7 +446,8 @@ client = anthropic.Anthropic()
 app = FastAPI(title="Casa Sognatto · Advisor Chat")
 # O Render termina SSL no edge e repassa requisições HTTP internamente.
 # Sem este middleware, o FastAPI não enxerga o protocolo real do cliente.
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+if ProxyHeadersMiddleware:
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 _init_db()
 _init_users_db()
