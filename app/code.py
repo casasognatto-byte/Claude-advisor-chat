@@ -174,10 +174,12 @@ class ConvBulkDelete(BaseModel):
 @router.get("/models")
 def list_models(request: Request):
     _require_code_master(request)
-    default = _default_model()
+    default_engine = _default_engine()
+    default_model = _default_model(default_engine)
     return {
-        "models": [{**m, "default": m["id"] == default} for m in CODE_MODELS],
-        "default": default,
+        "models": [{**m, "default": m["id"] == default_model} for m in CODE_MODELS],
+        "default": default_model,
+        "default_engine": default_engine,
     }
 
 
@@ -306,22 +308,75 @@ def _content_to_text(content: Any) -> str:
     return ""
 
 
+def _chat_with_claude(messages: list[dict], model: str, max_tokens: int) -> dict:
+    """Chama a API da Anthropic para o Sogno Code."""
+    if not ANTHROPIC_API_KEY_FOR_CODE:
+        raise HTTPException(500, "Chave Anthropic não configurada para o Sogno Code.")
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY_FOR_CODE)
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=CODE_SYSTEM_PROMPT,
+            messages=messages,
+        )
+    except anthropic.APIStatusError as e:
+        body = getattr(e, "body", None)
+        detail = "Erro na API da Anthropic."
+        if isinstance(body, dict):
+            err = body.get("error") or {}
+            if err.get("message"):
+                detail = err["message"]
+        raise HTTPException(e.status_code, detail)
+    except anthropic.APIConnectionError:
+        raise HTTPException(503, "Não foi possível conectar à API da Anthropic.")
+
+    text = ""
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            text += getattr(block, "text", "")
+    text = text.strip()
+
+    usage = response.usage
+    usage_dict = usage.model_dump() if usage else {}
+    appended = [{"role": "assistant", "content": text}]
+    return {
+        "append": appended,
+        "text": text,
+        "advisor": [],
+        "usage": {
+            "executor": {
+                "input_tokens": usage_dict.get("input_tokens") or 0,
+                "output_tokens": usage_dict.get("output_tokens") or 0,
+            },
+            "advisor": None,
+            "advisor_calls": 0,
+        },
+    }
+
+
 @router.post("/chat")
 def code_chat(req: CodeChatRequest, request: Request):
     _require_code_master(request)
+    engine = (req.engine or "kimi").lower()
+    if engine == "claude":
+        if not ANTHROPIC_API_KEY_FOR_CODE:
+            raise HTTPException(500, "CODE_ANTHROPIC_API_KEY ou ANTHROPIC_API_KEY não está configurada no servidor.")
+        valid = {m["id"] for m in CODE_MODELS if m["provider"] == "anthropic"}
+        model = req.model if req.model in valid else _default_model("anthropic")
+        return _chat_with_claude(req.messages, model, CODE_CLAUDE_MAX_TOKENS)
+
     if not MOONSHOT_API_KEY:
         raise HTTPException(500, "MOONSHOT_API_KEY não está configurada no servidor.")
 
-    valid = {m["id"] for m in CODE_MODELS}
-    model = req.model if req.model in valid else _default_model()
+    valid = {m["id"] for m in CODE_MODELS if m["provider"] == "moonshot"}
+    model = req.model if req.model in valid else _default_model("moonshot")
 
     payload = {
         "model": model,
         "messages": [{"role": "system", "content": CODE_SYSTEM_PROMPT}] + req.messages,
         "max_tokens": CODE_MAX_TOKENS,
-        # Sem "temperature": kimi-k3 só aceita temperature=1 (erro 400 em outro
-        # valor) — deixar de fora usa o padrão de cada modelo. Achado no teste
-        # local de 26/07/2026.
     }
     try:
         resp = httpx.post(

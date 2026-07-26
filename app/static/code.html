@@ -398,7 +398,7 @@
     document.getElementById("tok-out").textContent = t.out;
   }
 
-  // ---------- Seletor de modelo ----------
+  // ---------- Seletor de motor + modelo ----------
   async function loadModels() {
     try {
       const res = await fetch("/api/code/models");
@@ -407,24 +407,59 @@
       const data = await res.json();
       models = data.models || [];
       defaultModel = data.default || (models[0] && models[0].id) || null;
-      modelSel.innerHTML = "";
-      for (const m of models) {
-        const o = document.createElement("option");
-        o.value = m.id; o.textContent = m.label;
-        modelSel.appendChild(o);
-      }
+      currentEngine = data.default_engine || "kimi";
+      syncEngineUI();
       syncModelSel();
     } catch (_) {}
   }
+  function modelsForEngine(engine) {
+    return models.filter(m => m.provider === (engine === "claude" ? "anthropic" : "moonshot"));
+  }
+  function setEngine(engine) {
+    currentEngine = engine === "claude" ? "claude" : "kimi";
+    const c = active();
+    if (c && c.data) {
+      c.data.engine = currentEngine;
+      // Se o modelo atual não pertence ao novo motor, escolhe o padrão do motor.
+      const available = modelsForEngine(currentEngine);
+      const currentModel = c.data.model;
+      const valid = available.some(m => m.id === currentModel);
+      if (!valid && available.length) c.data.model = available.find(m => m.default)?.id || available[0].id;
+    }
+    syncEngineUI();
+    syncModelSel();
+  }
+  function syncEngineUI() {
+    document.querySelectorAll("#enginePicker .engine-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.engine === currentEngine);
+    });
+  }
   function syncModelSel() {
     const c = active();
-    modelSel.value = (c && c.data && c.data.model) || defaultModel || "";
+    const engine = (c && c.data && c.data.engine) || currentEngine;
+    const available = modelsForEngine(engine);
+    modelSel.innerHTML = "";
+    for (const m of available) {
+      const o = document.createElement("option");
+      o.value = m.id; o.textContent = m.label;
+      modelSel.appendChild(o);
+    }
+    const savedModel = (c && c.data && c.data.model) || defaultModel;
+    const valid = available.some(m => m.id === savedModel);
+    modelSel.value = valid ? savedModel : (available.find(m => m.default)?.id || (available[0] && available[0].id) || "");
+    modelSel.classList.toggle("visible", available.length > 0);
   }
   modelSel.addEventListener("change", async () => {
     const c = active(); if (!c) { syncModelSel(); return; }
     await ensureData(c);
     c.data.model = modelSel.value;
     await persist(c);
+  });
+  document.querySelectorAll("#enginePicker .engine-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      setEngine(btn.dataset.engine);
+      const c = active(); if (c) { await ensureData(c); await persist(c); }
+    });
   });
 
   // ---------- Operações ----------
@@ -435,7 +470,7 @@
   async function selectConv(id) {
     activeId = id;
     const c = active();
-    if (c) await ensureData(c);
+    if (c) { await ensureData(c); currentEngine = c.data.engine || currentEngine; }
     renderList(); renderChat(); input.focus();
   }
   async function renameConv(id) {
@@ -470,7 +505,7 @@
     try {
       const res = await fetch("/api/code/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: c.data.apiMessages, model: c.data.model || defaultModel }),
+        body: JSON.stringify({ messages: c.data.apiMessages, engine: c.data.engine || currentEngine, model: c.data.model || defaultModel }),
       });
       setTyping(false);
       if (res.status === 401) { window.location.href = "/login"; return; }
