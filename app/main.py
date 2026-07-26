@@ -428,15 +428,18 @@ _init_users_db()
 _init_activity_log_db()
 
 from app.admin import router as admin_router  # noqa: E402 (após _init_* por clareza)
+from app.code import init_code_db, router as code_router  # noqa: E402
 from app.image import init_image_db, router as image_router  # noqa: E402
 from app.materials import init_materials_db, router as materials_router  # noqa: E402
 from app.presentations import init_presentations_db, router as presentations_router  # noqa: E402
 from app.prompts import init_prompts_db, router as prompts_router  # noqa: E402
 app.include_router(admin_router)
+app.include_router(code_router)
 app.include_router(image_router)
 app.include_router(materials_router)
 app.include_router(prompts_router)
 app.include_router(presentations_router)
+init_code_db()
 init_image_db()
 init_materials_db()
 init_prompts_db()
@@ -1005,6 +1008,9 @@ def health():
         "api_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "auth_enabled": AUTH_ENABLED,
         "db_enabled": DB_ENABLED,
+        # Sogno Code (módulo de desenvolvimento, acesso restrito ao Davi):
+        # sem MOONSHOT_API_KEY as rotas /api/code respondem 500 explicando.
+        "code_enabled": bool(os.environ.get("MOONSHOT_API_KEY")),
         # R2 ausente = arquivos (imagens, apresentações) caem pro disco local do
         # servidor, que é apagado a cada deploy — ver app/storage.py.
         "r2_enabled": R2_ENABLED,
@@ -1057,6 +1063,19 @@ def presentations_page(request: Request):
     if current_user(request) is None:
         return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
     return FileResponse(os.path.join(STATIC_DIR, "apresentacoes.html"), headers=_NO_STORE)
+
+
+@app.get("/code")
+def code_page(request: Request):
+    """Sogno Code — só o usuário master (Davi) abre; ver app/code.py."""
+    user = current_user(request)
+    if user is None:
+        return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
+    from app.code import is_code_master
+
+    if not is_code_master(user["username"]):
+        raise HTTPException(403, "O Sogno Code é restrito ao usuário master.")
+    return FileResponse(os.path.join(STATIC_DIR, "code.html"), headers=_NO_STORE)
 
 
 @app.get("/apresentacao/{token}")

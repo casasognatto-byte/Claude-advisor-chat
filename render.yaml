@@ -72,3 +72,14 @@ services:
         # cobrem o workspace (90133031055) e o e-mail dele
         # (davinogueira@casasognatto.com.br) — só sobrescreva
         # CLICKUP_WORKSPACE_ID / CLICKUP_ALERT_EMAIL se algo mudar.
+      # --- Sogno Code (novo módulo de desenvolvimento, 26/07/2026) ----------------
+      - key: MOONSHOT_API_KEY
+        sync: false   # SEGREDO — chave da API Moonshot pro Kimi K3 (e K2.7/K2.6)
+      - key: CODE_ANTHROPIC_API_KEY
+        sync: false   # SEGREDO — reservada pra futura integração Claude no seletor
+      - key: CODE_MASTER_EMAIL
+        value: "davinogueira@casasognatto.com.br"
+      - key: CODE_DEFAULT_MODEL
+        value: "kimi-k3"
+      - key: CODE_MAX_TOKENS
+        value: "8192"

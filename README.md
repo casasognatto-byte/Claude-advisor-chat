@@ -26,6 +26,29 @@ advisor-chat/
 └── README.md
 ```
 
+## Sogno Code (módulo de desenvolvimento)
+
+A plataforma Sogno tem duas partes: o **Chat** (acima, usado pela equipe) e o
+**Code** — chat de desenvolvimento para criar ferramentas e automações da
+loja, rodando modelos **Kimi** (API Moonshot; padrão `kimi-k3`, com seletor na
+tela para `kimi-k2.7-code`, `kimi-k2.7-code-highspeed` e `kimi-k2.6`).
+
+- **Acesso restrito ao usuário master** (`davinogueira@casasognatto.com.br`,
+  configurável por `CODE_MASTER_EMAIL`): a página `/code` e todas as rotas
+  `/api/code/*` validam o e-mail no servidor — nem outro diretor entra.
+- Conversas ficam na tabela própria `code_conversations` (não se misturam com
+  as do Chat). Respostas renderizam markdown (marked + DOMPurify vendorados em
+  `app/static/vendor/`).
+- Backend em `app/code.py`, frontend em `app/static/code.html`, mesma
+  identidade visual do Chat (`theme.css`).
+- Variáveis novas: `MOONSHOT_API_KEY` (obrigatória pro módulo),
+  `MOONSHOT_BASE_URL`, `CODE_DEFAULT_MODEL`, `CODE_MAX_TOKENS`,
+  `CODE_MASTER_EMAIL`, `CODE_SYSTEM_PROMPT` — ver `.env.example`.
+  `CODE_ANTHROPIC_API_KEY` está reservada para a futura integração com modelos
+  Claude no seletor.
+- Para rodar a plataforma no PC-servidor com acesso local + remoto + celular
+  (Tailscale), ver **DEPLOY-PC.md**.
+
 ## Rodar localmente
 
 Pré-requisito: Python 3.10+.

@@ -265,6 +265,9 @@
     </div>
     <button class="new-btn" id="new" title="Criar cliente + ambientes">＋ Novo cliente</button>
     <a class="new-btn" id="presentationsLink" href="/apresentacoes" style="text-decoration:none;">Apresentações</a>
+    <!-- Sogno Code: só aparece pro diretor (ver init()); a página /code e as
+         rotas /api/code também validam o e-mail master no servidor. -->
+    <a class="new-btn" id="codeLink" href="/code" style="text-decoration:none; display:none;">🛠 Code</a>
     <select class="owner-filter" id="ownerFilter" style="display:none;"></select>
     <div class="conv-list-tools" id="convListTools">
       <button class="sel-toggle" id="convSelectAllBtn">Selecionar todas</button>
@@ -1892,6 +1895,7 @@
     document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
     if (role === "diretor") {
       document.getElementById("adminLinkTop").style.display = "inline-block";
+      document.getElementById("codeLink").style.display = "flex";
     }
     conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false, environmentId: c.environmentId || null }));
     await loadOwnerFilter();

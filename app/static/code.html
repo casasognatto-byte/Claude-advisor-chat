@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sogno Code · Casa Sognatto</title>
+<link rel="stylesheet" href="/static/theme.css" />
+<script src="/static/vendor/marked.min.js" defer></script>
+<script src="/static/vendor/purify.min.js" defer></script>
+<style>
+  body { display: flex; overflow: hidden; height: 100vh; }
+
+  /* ---------------- Sidebar (mesmo padrão do Chat) ---------------- */
+  .sidebar { width: 280px; flex: none; background: var(--bg-900); border-right: 1px solid var(--glass-border); display: flex; flex-direction: column; transition: transform .2s ease, opacity .2s ease; z-index: 46; }
+  body.collapsed .sidebar { width: 0; opacity: 0; pointer-events: none; }
+  .sb-brand { padding: 18px 18px 16px; border-bottom: 1px solid var(--glass-border); }
+  .sb-brand .wordmark .sogno { font-size: 22px; }
+  .sb-brand .tagline { margin-top: 8px; font-family: 'Sackers'; font-size: 7.5px; letter-spacing: .38em; color: var(--muted); }
+  .wordmark img.key-icon { width: 13px; height: auto; flex: none; }
+  .code-badge { font-family: 'Sackers'; font-size: 8px; letter-spacing: .3em; padding: 4px 8px 4px 10px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 7px; }
+  .new-btn { margin: 14px 14px 0; padding: 12px; background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); cursor: pointer; font-family: 'Inter'; font-weight: 600; font-size: 12.5px; letter-spacing: .03em; display: flex; align-items: center; justify-content: center; gap: 8px; transition: box-shadow .2s ease, background .15s ease; }
+  .new-btn:hover { background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent-border), 0 8px 28px var(--accent-dim); }
+  .nav-link { margin: 10px 14px 14px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px; border: 1px solid var(--glass-border); border-radius: var(--radius-sm); color: var(--text-dim); text-decoration: none; font-size: 12.5px; font-weight: 600; letter-spacing: .03em; background: var(--glass-bg-soft); transition: border-color .15s ease, color .15s ease; }
+  .nav-link:hover { border-color: var(--accent-border); color: var(--accent-soft); }
+  .conv-list-tools { display: none; margin: 0 14px 8px; gap: 6px; }
+  body.conv-select-mode .conv-list-tools { display: flex; }
+  .sel-toggle { flex: 1; background: var(--glass-bg-soft); color: var(--muted); border: 1px solid var(--glass-border); border-radius: 8px; padding: 6px 8px; font-size: 11px; cursor: pointer; font-family: inherit; }
+  .sel-toggle:hover:not(:disabled) { border-color: var(--accent-border); color: var(--accent-soft); }
+  .sel-toggle:disabled { opacity: .5; cursor: default; }
+  .sel-toggle.danger:not(:disabled):hover { color: var(--danger); border-color: rgba(224,121,107,.35); }
+  .conv-list { flex: 1; overflow-y: auto; padding: 4px 10px 10px; }
+  .conv { display: flex; align-items: center; gap: 8px; padding: 10px 11px; margin-bottom: 3px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-dim); font-size: 13.5px; border: 1px solid transparent; }
+  .conv:hover { background: var(--glass-bg-soft); color: var(--text); }
+  .conv.active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--text); }
+  .conv .sel-check { flex: none; display: none; accent-color: var(--accent); }
+  body.conv-select-mode .conv .sel-check { display: inline-block; }
+  body.conv-select-mode .conv .del { display: none; }
+  .conv .title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conv .del { flex: none; opacity: 0; color: var(--muted); background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
+  .conv:hover .del { opacity: .8; }
+  .conv .del:hover { color: var(--danger); background: rgba(224,121,107,.1); }
+  .sb-footer { border-top: 1px solid var(--glass-border); padding: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .sb-footer .user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sb-footer .actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; width: 100%; }
+  .sb-footer button { flex: none; background: transparent; color: var(--muted); border: 1px solid var(--glass-border); border-radius: 8px; padding: 6px 10px; cursor: pointer; font-size: 11px; letter-spacing: .04em; }
+  .sb-footer button:hover { border-color: var(--accent-border); color: var(--accent-soft); }
+
+  /* ---------------- Coluna central ---------------- */
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+  header { padding: 14px 22px; background: var(--bg-900); border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .h-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .toggle { background: var(--glass-bg-soft); border: 1px solid var(--glass-border); color: var(--text); border-radius: var(--radius-sm); padding: 7px 11px; cursor: pointer; font-size: 15px; line-height: 1; text-decoration: none; }
+  .toggle:hover { border-color: var(--accent-border); color: var(--accent-soft); }
+  .h-title { font-family: 'Benjamin'; font-size: 16px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #modelSel { font-size: 12.5px; padding: 7px 10px; max-width: 210px; }
+  .tokens { font-size: 11px; color: var(--muted); text-align: right; line-height: 1.5; flex: none; }
+  .tokens b { color: var(--text-dim); font-weight: 600; }
+
+  main { flex: 1; overflow-y: auto; padding: 26px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .inner { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .msg { display: flex; gap: 10px; align-items: flex-end; animation: rise-in .28s ease; }
+  .msg.user { justify-content: flex-end; }
+  .bubble { max-width: 92%; padding: 14px 18px; border-radius: var(--radius-md); white-space: pre-wrap; word-wrap: break-word; line-height: 1.6; font-size: 14.5px; }
+  .user .bubble { max-width: 74%; background: var(--accent-dim); border: 1px solid var(--accent-border); color: var(--text); border-bottom-right-radius: 4px; }
+  .assistant .bubble { background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-bottom-left-radius: 4px; }
+  .error .bubble { background: var(--danger-bg); border: 1px solid rgba(224,121,107,.4); color: #ffd9d3; }
+  .avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+  .avatar.sogno { background: var(--accent-dim); border: 1px solid var(--accent-border); color: var(--accent-soft); }
+  .avatar.user { background: var(--bg-700); border: 1px solid var(--glass-border); color: var(--text-dim); order: 2; }
+  .empty { margin: auto; text-align: center; color: var(--muted); font-size: 14px; }
+  .empty .key { color: var(--accent); opacity: .85; margin-bottom: 12px; font-size: 34px; }
+  .typing { color: var(--muted); font-size: 13px; font-style: italic; }
+
+  /* Markdown dentro das bolhas do assistente */
+  .bubble.md { white-space: normal; }
+  .bubble.md > :first-child { margin-top: 0; }
+  .bubble.md > :last-child { margin-bottom: 0; }
+  .bubble.md p { margin: 0 0 10px; }
+  .bubble.md h1, .bubble.md h2, .bubble.md h3, .bubble.md h4 { font-size: 15px; margin: 14px 0 8px; color: var(--text); }
+  .bubble.md ul, .bubble.md ol { margin: 6px 0 10px; padding-left: 22px; }
+  .bubble.md li { margin: 3px 0; }
+  .bubble.md pre { background: var(--bg-950); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
+  .bubble.md code { font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace; font-size: 13px; }
+  .bubble.md :not(pre) > code { background: var(--bg-800); border: 1px solid var(--glass-border); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; }
+  .bubble.md pre code { background: none; border: none; padding: 0; }
+  .bubble.md table { border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  .bubble.md th, .bubble.md td { border: 1px solid var(--glass-border); padding: 6px 10px; }
+  .bubble.md a { color: var(--accent-soft); }
+  .bubble.md blockquote { border-left: 3px solid var(--accent-border); margin: 8px 0; padding: 4px 12px; color: var(--text-dim); }
+  .bubble.md hr { border: none; border-top: 1px solid var(--glass-border); margin: 12px 0; }
+
+  /* Composer flutuante */
+  footer { padding: 0 22px 22px; }
+  .composer-card { max-width: 760px; margin: 0 auto; background: var(--glass-bg); backdrop-filter: blur(var(--glass-blur)); -webkit-backdrop-filter: blur(var(--glass-blur)); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-deep); padding: 12px; }
+  .composer { display: flex; gap: 10px; align-items: flex-end; }
+  textarea { flex: 1; resize: none; background: transparent; border: none; padding: 10px 6px; font: inherit; font-size: 14.5px; line-height: 1.4; max-height: 160px; color: var(--text); }
+  textarea:focus { outline: none; }
+  #send { background: var(--accent); color: #1a1208; border: none; border-radius: var(--radius-sm); padding: 11px 20px; font-weight: 600; font-size: 12.5px; letter-spacing: .03em; cursor: pointer; }
+  #send:hover:not(:disabled) { background: var(--accent-soft); }
+  #send:disabled { opacity: .5; cursor: default; }
+  .hint { max-width: 760px; margin: 9px auto 0; font-size: 10.5px; color: var(--muted); text-align: center; }
+
+  /* ---------------- Responsivo ---------------- */
+  .sidebar-backdrop { display: none; }
+  @media (max-width: 768px) {
+    .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: min(280px, 84vw); }
+    body.collapsed .sidebar { transform: translateX(-100%); width: min(280px, 84vw); opacity: 1; pointer-events: auto; }
+    body:not(.collapsed) .sidebar { box-shadow: var(--shadow-deep); }
+    body:not(.collapsed) .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 45; }
+    .inner, .composer-card, .hint { max-width: 100%; }
+    main { padding: 18px 14px; }
+    footer { padding: 0 14px 14px; }
+    header { padding: 12px 14px; }
+    .tokens { display: none; }
+    .bubble, .user .bubble { max-width: 88%; }
+    #modelSel { max-width: 140px; }
+  }
+</style>
+</head>
+<body>
+  <script>
+    // Sidebar já nasce no estado certo (celular = recolhida) sem "flash".
+    if (window.innerWidth < 769) document.body.classList.add("collapsed");
+  </script>
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <div class="wordmark">
+        <img class="key-icon" src="/static/brand/chave-cobre.svg" alt="" />
+        <div class="sogno">SOGNO</div>
+        <div class="code-badge">CODE</div>
+      </div>
+      <div class="tagline">CASA SOGNATTO</div>
+    </div>
+    <button class="new-btn" id="new" title="Nova conversa de desenvolvimento">＋ Nova conversa</button>
+    <a class="nav-link" href="/" title="Voltar pro Chat da equipe">💬 Chat</a>
+    <div class="conv-list-tools" id="convListTools">
+      <button class="sel-toggle" id="convSelectAllBtn">Selecionar todas</button>
+      <button class="sel-toggle danger" id="convDeleteSelectedBtn" disabled>Excluir selecionadas</button>
+    </div>
+    <div class="conv-list" id="convList"></div>
+    <div class="sb-footer">
+      <span class="user" id="userLabel">—</span>
+      <div class="actions">
+        <button id="convSelectModeBtn">Selecionar</button>
+        <button id="logout">Sair</button>
+      </div>
+    </div>
+  </aside>
+
+  <div class="content">
+    <header>
+      <div class="h-left">
+        <button class="toggle" id="toggle" title="Mostrar/ocultar conversas">☰</button>
+        <div class="h-title" id="hTitle">Nova conversa</div>
+      </div>
+      <div class="h-left">
+        <select id="modelSel" title="Modelo desta conversa"></select>
+        <div class="tokens">Tokens: <b><span id="tok-in">0</span></b> / <b><span id="tok-out">0</span></b></div>
+        <a class="toggle" id="adminLinkTop" href="/admin" title="Painel do diretor" style="display:none;">⚙</a>
+      </div>
+    </header>
+    <main id="scroll"><div class="inner" id="chat"></div></main>
+    <footer>
+      <div class="composer-card">
+        <div class="composer">
+          <textarea id="input" rows="1" placeholder="O que vamos construir hoje? (Enter envia, Shift+Enter quebra linha)"></textarea>
+          <button id="send">Enviar</button>
+        </div>
+      </div>
+      <div class="hint" id="hint">Sogno Code · uso restrito · a chave da API fica protegida no servidor.</div>
+    </footer>
+  </div>
+
+<script>
+  // ---------- Camada de armazenamento (mesma do Chat, endpoints /api/code) ----------
+  const Store = {
+    mode: "local", user: "anon",
+    key() { return "cs_code_conversations__" + this.user; },
+    lAll() { try { return JSON.parse(localStorage.getItem(this.key())) || []; } catch (_) { return []; } },
+    lSave(a) { try { localStorage.setItem(this.key(), JSON.stringify(a)); } catch (_) {} },
+
+    async init(user) {
+      this.user = user;
+      try {
+        const res = await fetch("/api/code/conversations?owner=all");
+        if (res.status === 401) { window.location.href = "/login"; return []; }
+        if (res.ok) { this.mode = "remote"; return await res.json(); }
+      } catch (_) {}
+      this.mode = "local";
+      return this.lAll().map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt || 0 }));
+    },
+    async getData(id) {
+      if (this.mode === "remote") {
+        const res = await fetch("/api/code/conversations/" + id);
+        if (res.ok) return (await res.json()).data || {};
+        return {};
+      }
+      const c = this.lAll().find(x => x.id === id);
+      return c ? (c.data || {}) : {};
+    },
+    async create(conv) {
+      if (this.mode === "remote") {
+        await fetch("/api/code/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(conv) });
+      } else {
+        const a = this.lAll(); a.unshift({ id: conv.id, title: conv.title, data: conv.data, updatedAt: Date.now() }); this.lSave(a);
+      }
+    },
+    async update(id, fields) {
+      if (this.mode === "remote") {
+        await fetch("/api/code/conversations/" + id, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) });
+      } else {
+        const a = this.lAll(); const c = a.find(x => x.id === id);
+        if (c) { if (fields.title != null) c.title = fields.title; if (fields.data != null) c.data = fields.data; c.updatedAt = Date.now(); a.sort((x, y) => (y.updatedAt || 0) - (x.updatedAt || 0)); this.lSave(a); }
+      }
+    },
+    async remove(id) {
+      if (this.mode === "remote") { await fetch("/api/code/conversations/" + id, { method: "DELETE" }); }
+      else { this.lSave(this.lAll().filter(x => x.id !== id)); }
+    },
+    async bulkRemove(ids) {
+      if (this.mode === "remote") {
+        await fetch("/api/code/conversations/bulk-delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      } else {
+        const set = new Set(ids); this.lSave(this.lAll().filter(x => !set.has(x.id)));
+      }
+    },
+  };
+
+  // ---------- Estado ----------
+  let conversations = [];   // {id,title,updatedAt,data|null,_new}
+  let activeId = null;
+  let currentUser = "anon";
+  let currentRole = null;
+  let convSelectMode = false;
+  let convSelectedIds = new Set();
+  let models = [];
+  let defaultModel = null;
+
+  const chat = document.getElementById("chat");
+  const scroll = document.getElementById("scroll");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+  const convListEl = document.getElementById("convList");
+  const hTitle = document.getElementById("hTitle");
+  const modelSel = document.getElementById("modelSel");
+
+  function uid() { return "k" + Date.now() + Math.random().toString(36).slice(2, 7); }
+  function emptyTokens() { return { in: 0, out: 0 }; }
+  function emptyData() { return { apiMessages: [], view: [], tokens: emptyTokens(), model: null }; }
+  function active() { return conversations.find(c => c.id === activeId); }
+
+  async function ensureData(c) {
+    if (c.data == null) c.data = await Store.getData(c.id);
+    if (!c.data.apiMessages) c.data.apiMessages = [];
+    if (!c.data.view) c.data.view = [];
+    if (!c.data.tokens) c.data.tokens = emptyTokens();
+    if (c.data.model == null) c.data.model = null;
+    return c.data;
+  }
+  async function persist(c) {
+    c.updatedAt = Date.now();
+    if (c._new) { await Store.create({ id: c.id, title: c.title, data: c.data }); c._new = false; }
+    else { await Store.update(c.id, { title: c.title, data: c.data }); }
+    conversations.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    renderList();
+  }
+
+  // ---------- Renderização da lista ----------
+  function renderConvRow(c) {
+    const row = document.createElement("div");
+    row.className = "conv" + (c.id === activeId ? " active" : "");
+    const check = document.createElement("input");
+    check.type = "checkbox"; check.className = "sel-check"; check.title = "Selecionar conversa";
+    check.checked = convSelectedIds.has(c.id);
+    check.addEventListener("click", (e) => { e.stopPropagation(); toggleConvSelected(c.id, check.checked); });
+    const t = document.createElement("div");
+    t.className = "title"; t.textContent = c.title || "Nova conversa"; t.title = "Clique duplo para renomear";
+    const del = document.createElement("button");
+    del.className = "del"; del.innerHTML = "🗑"; del.title = "Excluir conversa";
+    row.appendChild(check); row.appendChild(t); row.appendChild(del);
+    row.addEventListener("click", () => {
+      if (convSelectMode) { check.checked = !check.checked; toggleConvSelected(c.id, check.checked); return; }
+      selectConv(c.id);
+    });
+    t.addEventListener("dblclick", (e) => { e.stopPropagation(); renameConv(c.id); });
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteConv(c.id); });
+    return row;
+  }
+  function renderList() {
+    convListEl.innerHTML = "";
+    for (const c of conversations) convListEl.appendChild(renderConvRow(c));
+  }
+
+  // ---------- Seleção múltipla ----------
+  function toggleConvSelected(id, checked) {
+    if (checked) convSelectedIds.add(id); else convSelectedIds.delete(id);
+    updateConvSelectUI();
+  }
+  function updateConvSelectUI() {
+    const delBtn = document.getElementById("convDeleteSelectedBtn");
+    delBtn.disabled = convSelectedIds.size === 0;
+    delBtn.textContent = convSelectedIds.size ? `Excluir selecionadas (${convSelectedIds.size})` : "Excluir selecionadas";
+    document.getElementById("convSelectAllBtn").textContent =
+      convSelectedIds.size && convSelectedIds.size === conversations.length ? "Desmarcar todas" : "Selecionar todas";
+  }
+  function setConvSelectMode(on) {
+    convSelectMode = on;
+    document.body.classList.toggle("conv-select-mode", on);
+    document.getElementById("convSelectModeBtn").textContent = on ? "Cancelar seleção" : "Selecionar";
+    if (!on) convSelectedIds.clear();
+    updateConvSelectUI();
+    renderList();
+  }
+
+  // ---------- Renderização das mensagens ----------
+  // Markdown (marked + DOMPurify vendorados) com fallback pra texto puro —
+  // mesmo comportamento do Chat se as libs não carregarem.
+  if (window.marked) marked.setOptions({ breaks: true, gfm: true });
+  function renderMarkdown(text) {
+    if (window.marked && window.DOMPurify) {
+      return DOMPurify.sanitize(marked.parse(text || ""));
+    }
+    return null;
+  }
+
+  function renderItem(item) {
+    const emptyPlaceholder = chat.querySelector(".empty");
+    if (emptyPlaceholder) emptyPlaceholder.remove();
+    if (item.type === "user") {
+      const r = document.createElement("div"); r.className = "msg user";
+      const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text;
+      const av = document.createElement("div"); av.className = "avatar user"; av.textContent = (currentUser || "?").slice(0, 1).toUpperCase();
+      r.appendChild(b); r.appendChild(av); chat.appendChild(r);
+    } else if (item.type === "assistant") {
+      if (!item.text) return;
+      const r = document.createElement("div"); r.className = "msg assistant";
+      const av = document.createElement("div"); av.className = "avatar sogno"; av.textContent = "S";
+      const b = document.createElement("div"); b.className = "bubble";
+      const html = renderMarkdown(item.text);
+      if (html != null) { b.classList.add("md"); b.innerHTML = html; }
+      else { b.textContent = item.text; }
+      r.appendChild(av); r.appendChild(b); chat.appendChild(r);
+    } else if (item.type === "error") {
+      const r = document.createElement("div"); r.className = "msg assistant error";
+      const b = document.createElement("div"); b.className = "bubble"; b.textContent = "⚠️ " + item.text; r.appendChild(b); chat.appendChild(r);
+    }
+  }
+  function renderChat() {
+    chat.innerHTML = "";
+    const c = active();
+    if (!c || !c.data || c.data.view.length === 0) {
+      const e = document.createElement("div"); e.className = "empty";
+      e.innerHTML = '<div class="key">🛠</div>Comece uma nova conversa.<br>Descreva a ferramenta que você quer construir para a loja.';
+      chat.appendChild(e);
+    } else {
+      for (const item of c.data.view) renderItem(item);
+    }
+    renderTokens(); scrollDown();
+    hTitle.textContent = c ? (c.title || "Nova conversa") : "Nova conversa";
+    syncModelSel();
+  }
+  function scrollDown() { scroll.scrollTop = scroll.scrollHeight; }
+  let typingEl = null;
+  function setTyping(on) {
+    if (on) { typingEl = document.createElement("div"); typingEl.className = "typing"; typingEl.textContent = "pensando…"; chat.appendChild(typingEl); scrollDown(); }
+    else if (typingEl) { typingEl.remove(); typingEl = null; }
+  }
+  function renderTokens() {
+    const c = active();
+    const t = (c && c.data && c.data.tokens) ? c.data.tokens : emptyTokens();
+    document.getElementById("tok-in").textContent = t.in;
+    document.getElementById("tok-out").textContent = t.out;
+  }
+
+  // ---------- Seletor de modelo ----------
+  async function loadModels() {
+    try {
+      const res = await fetch("/api/code/models");
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) return;
+      const data = await res.json();
+      models = data.models || [];
+      defaultModel = data.default || (models[0] && models[0].id) || null;
+      modelSel.innerHTML = "";
+      for (const m of models) {
+        const o = document.createElement("option");
+        o.value = m.id; o.textContent = m.label;
+        modelSel.appendChild(o);
+      }
+      syncModelSel();
+    } catch (_) {}
+  }
+  function syncModelSel() {
+    const c = active();
+    modelSel.value = (c && c.data && c.data.model) || defaultModel || "";
+  }
+  modelSel.addEventListener("change", async () => {
+    const c = active(); if (!c) { syncModelSel(); return; }
+    await ensureData(c);
+    c.data.model = modelSel.value;
+    await persist(c);
+  });
+
+  // ---------- Operações ----------
+  function newConv() {
+    const c = { id: uid(), title: "Nova conversa", updatedAt: Date.now(), data: emptyData(), _new: true };
+    conversations.unshift(c); activeId = c.id; renderList(); renderChat(); input.focus();
+  }
+  async function selectConv(id) {
+    activeId = id;
+    const c = active();
+    if (c) await ensureData(c);
+    renderList(); renderChat(); input.focus();
+  }
+  async function renameConv(id) {
+    const c = conversations.find(x => x.id === id); if (!c) return;
+    const name = prompt("Nome da conversa:", c.title || "");
+    if (name === null) return;
+    c.title = name.trim() || "Nova conversa";
+    await ensureData(c); await persist(c);
+    if (id === activeId) hTitle.textContent = c.title;
+  }
+  async function deleteConv(id) {
+    const c = conversations.find(x => x.id === id); if (!c) return;
+    if (!confirm('Excluir a conversa "' + (c.title || "Nova conversa") + '"? Isso não pode ser desfeito.')) return;
+    if (!c._new) await Store.remove(id);
+    conversations = conversations.filter(x => x.id !== id);
+    if (activeId === id) activeId = conversations.length ? conversations[0].id : null;
+    if (!conversations.length) { newConv(); } else { await selectConv(activeId); }
+  }
+
+  async function send() {
+    const text = input.value.trim(); if (!text) return;
+    let c = active(); if (!c) { newConv(); c = active(); }
+    await ensureData(c);
+    input.value = ""; autosize(); sendBtn.disabled = true;
+
+    c.data.apiMessages.push({ role: "user", content: text });
+    c.data.view.push({ type: "user", text });
+    if (c.title === "Nova conversa") { c.title = text.slice(0, 42) + (text.length > 42 ? "…" : ""); hTitle.textContent = c.title; }
+    renderItem({ type: "user", text }); scrollDown(); setTyping(true);
+    await persist(c);
+
+    try {
+      const res = await fetch("/api/code/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: c.data.apiMessages, model: c.data.model || defaultModel }),
+      });
+      setTyping(false);
+      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (!res.ok) {
+        let detail = res.statusText; try { detail = (await res.json()).detail || detail; } catch (_) {}
+        c.data.view.push({ type: "error", text: detail }); renderItem({ type: "error", text: detail }); scrollDown(); await persist(c); return;
+      }
+      const data = await res.json();
+      for (const m of data.append) c.data.apiMessages.push(m);
+      c.data.view.push({ type: "assistant", text: data.text }); renderItem({ type: "assistant", text: data.text });
+      applyTokens(c, data.usage); renderTokens(); scrollDown(); await persist(c);
+    } catch (e) {
+      setTyping(false);
+      c.data.view.push({ type: "error", text: String(e) }); renderItem({ type: "error", text: String(e) }); scrollDown(); await persist(c);
+    } finally { sendBtn.disabled = false; input.focus(); }
+  }
+  function applyTokens(c, usage) {
+    if (!usage) return;
+    const t = c.data.tokens;
+    if (usage.executor) { t.in += usage.executor.input_tokens || 0; t.out += usage.executor.output_tokens || 0; }
+  }
+
+  function autosize() {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  }
+  async function logout() {
+    try { await fetch("/api/logout", { method: "POST" }); } catch (_) {}
+    window.location.href = "/login";
+  }
+
+  // ---------- Boot ----------
+  document.getElementById("sidebarBackdrop").addEventListener("click", () => document.body.classList.add("collapsed"));
+
+  async function init() {
+    let user = "anon", role = null;
+    try {
+      const me = await fetch("/api/me").then(r => r.json());
+      if (me && me.user) { user = me.user; role = me.role; }
+    } catch (_) {}
+    currentUser = user; currentRole = role;
+    document.getElementById("userLabel").textContent = user === "anon" ? "Visitante" : user;
+    if (role === "diretor") {
+      document.getElementById("adminLinkTop").style.display = "inline-block";
+    }
+    await loadModels();
+    conversations = (await Store.init(user)).map(c => ({ id: c.id, title: c.title, updatedAt: c.updatedAt, data: null, _new: false }));
+    document.getElementById("hint").textContent = Store.mode === "remote"
+      ? "Sogno Code · uso restrito · histórico salvo no servidor."
+      : "Sogno Code · uso restrito · histórico salvo neste computador.";
+    if (window.innerWidth >= 769) document.body.classList.remove("collapsed");
+    if (!conversations.length) { newConv(); }
+    else { await selectConv(conversations[0].id); }
+    input.focus();
+  }
+
+  input.addEventListener("input", autosize);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  sendBtn.addEventListener("click", send);
+  document.getElementById("new").addEventListener("click", newConv);
+  document.getElementById("logout").addEventListener("click", logout);
+  document.getElementById("convSelectModeBtn").addEventListener("click", () => setConvSelectMode(!convSelectMode));
+  document.getElementById("convSelectAllBtn").addEventListener("click", () => {
+    if (convSelectedIds.size === conversations.length) convSelectedIds.clear();
+    else conversations.forEach(c => convSelectedIds.add(c.id));
+    updateConvSelectUI();
+    renderList();
+  });
+  document.getElementById("convDeleteSelectedBtn").addEventListener("click", async () => {
+    const ids = Array.from(convSelectedIds);
+    if (!ids.length) return;
+    if (!confirm(`Excluir ${ids.length} conversa(s) selecionada(s)? Isso não pode ser desfeito.`)) return;
+    await Store.bulkRemove(ids);
+    const deleted = new Set(ids);
+    conversations = conversations.filter(c => !deleted.has(c.id));
+    const activeWasDeleted = activeId && deleted.has(activeId);
+    setConvSelectMode(false);
+    if (activeWasDeleted) {
+      if (!conversations.length) newConv(); else await selectConv(conversations[0].id);
+    } else {
+      renderList();
+    }
+  });
+  document.getElementById("toggle").addEventListener("click", () => document.body.classList.toggle("collapsed"));
+  init();
+</script>
+</body>
+</html>
