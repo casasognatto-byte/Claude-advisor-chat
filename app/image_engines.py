@@ -1,5 +1,8 @@
-"""Integração com o fornecedor de geração de imagem (Nano Banana, via Gemini
-API) + um engine "stub" para testes locais sem chave real.
+"""Integração com os fornecedores de geração de imagem:
+
+- Nano Banana (via Gemini API)
+- ReDraw AI (via API REST genérica — endpoint configurável)
+- Um engine "stub" para testes locais sem chave real
 
 Ao contrário do vídeo (Luma/Veo, que levam 1-3 minutos e exigem fila +
 polling), a geração de imagem é rápida (segundos) — cada engine expõe um
@@ -132,7 +135,89 @@ class NanoBananaEngine:
         raise ImageGenerationError("Nenhuma imagem encontrada na resposta do Nano Banana.")
 
 
+class RedrawEngine:
+    """Engine para o ReDraw AI.
+
+    ATENÇÃO: a API pública oficial do ReDraw AI não foi localizada no momento
+    da implementação (o site redraw.ai divulga apenas o app iOS). Esta classe
+    usa um contrato REST genérico, comum entre APIs de geração/edição de
+    imagem: POST JSON contendo a imagem original em base64, o prompt e as
+    imagens de referência de cor; resposta JSON contendo a imagem gerada em
+    base64. Os campos e o endpoint padrão podem precisar de ajustes assim que
+    o Davi fornecer a documentação ou a API key real do fornecedor.
+    """
+
+    API_URL = os.environ.get("REDRAW_API_URL", "https://api.redraw.ai/v1/redraw")
+    TIMEOUT = int(os.environ.get("REDRAW_TIMEOUT", "90"))
+
+    def _api_key(self):
+        key = os.environ.get("REDRAW_API_KEY")
+        if not key:
+            raise ImageGenerationError("REDRAW_API_KEY não configurada.")
+        return key
+
+    async def generate(
+        self, image_bytes: bytes, mime: str, prompt: str, reference_images: list[dict] | None = None
+    ) -> tuple[bytes, str]:
+        b64_image = base64.b64encode(image_bytes).decode("ascii")
+
+        # Monta lista de referências de cor/material, quando houver.
+        refs = []
+        for ref in reference_images or []:
+            target = (ref.get("target") or "").strip()
+            where = f"no(s) seguinte(s) móvel(is): {target}" if target else "onde a instrução acima indicar"
+            refs.append({
+                "name": ref["name"],
+                "brand": ref.get("brand", ""),
+                "target": where,
+                "mime_type": ref.get("mime") or "image/png",
+                "data": base64.b64encode(ref["bytes"]).decode("ascii"),
+            })
+
+        body = {
+            "prompt": prompt
+            or "Transforme esta imagem em um render fotorrealista, "
+               "preservando composição, proporções e materiais indicados.",
+            "image": {"mime_type": mime or "image/jpeg", "data": b64_image},
+            "reference_images": refs,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self._api_key()}",
+            "Content-Type": "application/json",
+        }
+
+        async with httpx.AsyncClient(timeout=self.TIMEOUT) as client:
+            resp = await client.post(self.API_URL, json=body, headers=headers)
+
+        if resp.status_code >= 400:
+            raise ImageGenerationError(f"ReDraw AI falhou: {resp.status_code} {resp.text[:300]}")
+
+        data = resp.json()
+
+        # Tenta diferentes formatos de resposta comuns em APIs de imagem.
+        image_data = None
+        mime_out = "image/png"
+
+        if "image" in data and isinstance(data["image"], dict):
+            image_data = data["image"].get("data") or data["image"].get("image")
+            mime_out = data["image"].get("mime_type") or data["image"].get("mimeType") or mime_out
+        elif "data" in data and isinstance(data["data"], dict):
+            image_data = data["data"].get("image") or data["data"].get("data")
+            mime_out = data["data"].get("mime_type") or data["data"].get("mimeType") or mime_out
+        elif isinstance(data.get("data"), str):
+            image_data = data["data"]
+        elif isinstance(data.get("image"), str):
+            image_data = data["image"]
+
+        if not image_data:
+            raise ImageGenerationError("Nenhuma imagem encontrada na resposta do ReDraw AI.")
+
+        return base64.b64decode(image_data), mime_out
+
+
 ENGINES = {
     "stub": StubImageEngine(),
     "nanobanana": NanoBananaEngine(),
+    "redraw": RedrawEngine(),
 }
