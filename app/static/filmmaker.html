@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sogno · Filmmaker</title>
+<link rel="stylesheet" href="/static/theme.css" />
+<style>
+  @font-face { font-family:'Benjamin'; src:url('/static/fonts/FSBenjamin-Regular.otf') format('opentype'); font-display:swap; }
+  @font-face { font-family:'Sackers'; src:url('/static/fonts/SackersGothic-Medium.otf') format('opentype'); font-display:swap; }
+
+  :root {
+    --green-950: #0a0a0a; --green-900: #121212; --green-800: #1c1c1c;
+    --green-700: #262626; --green-600: #333333;
+    --cream: #f0ede6; --muted: #a3a09a; --gold: #c9975a; --gold-soft: #dcb17e;
+    --border: rgba(255,255,255,.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--green-800); color: var(--cream); min-height: 100vh; }
+
+  header { padding: 14px 22px; background: var(--green-900); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .h-left { display: flex; align-items: center; gap: 10px; }
+  .h-title { font-family:'Benjamin'; font-size: 17px; }
+  a.link, button.link { color: var(--muted); text-decoration: none; font-size: 12.5px; background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; cursor: pointer; font-family: inherit; }
+  a.link:hover, button.link:hover { border-color: var(--gold); color: var(--gold); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 20px 60px; }
+
+  .card { background: var(--green-900); border: 1px solid var(--border); border-radius: 14px; padding: 22px; margin-bottom: 16px; }
+  h2 { font-family:'Sackers'; font-size: 12px; letter-spacing:.14em; text-transform: uppercase; color: var(--gold); margin: 0 0 16px; }
+  h3 { font-family:'Sackers'; font-size: 11px; letter-spacing:.1em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+  tr:last-child td { border-bottom: none; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--green-800); }
+
+  input, textarea { background: var(--green-700); color: var(--cream); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 13.5px; width: 100%; }
+  input:focus, textarea:focus { outline: none; border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1c1408; border: none; border-radius: 8px; padding: 9px 16px; font-family:'Sackers'; font-size: 11.5px; letter-spacing:.1em; text-transform: uppercase; cursor: pointer; }
+  button.primary:hover { background: var(--gold-soft); }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+  button.secondary:hover { border-color: var(--gold); color: var(--gold); }
+  button.danger { background: transparent; border: 1px solid #a55; color: #ff9d9d; border-radius: 8px; padding: 5px 10px; font-size: 11.5px; cursor: pointer; }
+  button.danger:hover { background: rgba(255,157,157,.1); }
+
+  .form-row { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
+  .status-badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 11px; border: 1px solid var(--border); background: var(--green-800); }
+  .status-draft { color: var(--muted); }
+  .status-uploaded { color: #7ec; border-color: rgba(126,238,204,.25); }
+  .status-analyzed { color: #8af; border-color: rgba(136,170,255,.25); }
+  .status-rendering { color: #fa8; border-color: rgba(255,170,136,.25); }
+  .status-done { color: #8f8; border-color: rgba(136,255,136,.25); }
+  .status-failed { color: #f88; border-color: rgba(255,136,136,.25); }
+
+  .frames { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .frames img { width: 120px; height: auto; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+  .frames img:hover { border-color: var(--gold); }
+
+  .hidden { display: none !important; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="h-left">
+    <a href="/" class="link">&larr; Chat</a>
+    <span class="h-title">Filmmaker</span>
+  </div>
+  <div>
+    <a href="/apresentacoes" class="link">Apresentações</a>
+    <button id="btnNewProject" class="primary">Novo projeto</button>
+  </div>
+</header>
+
+<main>
+  <!-- Lista de projetos -->
+  <div id="viewList" class="card">
+    <h2>Projetos</h2>
+    <table id="projectsTable">
+      <thead><tr><th>Título</th><th>Status</th><th>Criado</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="projectsEmpty" class="empty hidden">Nenhum projeto ainda.</div>
+  </div>
+
+  <!-- Novo projeto -->
+  <div id="viewNew" class="card hidden">
+    <h2>Novo projeto</h2>
+    <label>Título</label>
+    <input id="newTitle" type="text" placeholder="Ex: Tour Cozinha Julia" />
+    <label>Roteiro (opcional)</label>
+    <textarea id="newRoteiro" rows="3" placeholder="Descreva o objetivo do vídeo..."></textarea>
+    <div class="form-row">
+      <button id="btnCreate" class="primary">Criar</button>
+      <button id="btnCancelNew" class="secondary">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- Detalhes do projeto -->
+  <div id="viewDetail" class="card hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+      <h2 id="detailTitle">Projeto</h2>
+      <div>
+        <span id="detailStatus" class="status-badge status-draft">draft</span>
+        <button id="btnBack" class="secondary">Voltar</button>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div id="sectionUpload">
+      <h3>Vídeo original</h3>
+      <input id="fileInput" type="file" accept="video/*" />
+      <div class="form-row">
+        <button id="btnUpload" class="primary">Enviar e processar</button>
+        <span id="uploadSpinner" class="spinner hidden"></span>
+      </div>
+      <div id="uploadError" class="muted" style="margin-top:8px;color:#f88;"></div>
+    </div>
+
+    <!-- Preview -->
+    <div id="sectionPreview" class="hidden">
+      <h3>Vídeo comprimido</h3>
+      <video id="videoPreview" controls style="max-width:320px;border-radius:8px;border:1px solid var(--border);"></video>
+    </div>
+
+    <!-- Frames -->
+    <div id="sectionFrames" class="hidden">
+      <h3>Frames extraídos</h3>
+      <div id="framesList" class="frames"></div>
+    </div>
+
+    <!-- Ações -->
+    <div id="sectionActions" class="hidden" style="margin-top:16px;">
+      <div class="form-row">
+        <button id="btnAnalyze" class="primary">Analisar com IA</button>
+        <button id="btnRoteiro" class="secondary">Gerar roteiro</button>
+        <button id="btnRender" class="primary">Renderizar</button>
+        <span id="actionSpinner" class="spinner hidden"></span>
+      </div>
+      <div id="actionResult" class="muted" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- Sequência -->
+    <div id="sectionSequencia" class="hidden">
+      <h3>Sequência da IA</h3>
+      <pre id="sequenciaText" style="background:var(--green-800);padding:12px;border-radius:8px;font-size:12px;overflow-x:auto;"></pre>
+    </div>
+
+    <!-- Roteiro -->
+    <div id="sectionRoteiro" class="hidden">
+      <h3>Roteiro</h3>
+      <div id="roteiroText" style="white-space:pre-wrap;font-size:13.5px;"></div>
+    </div>
+
+    <!-- Job -->
+    <div id="sectionJob" class="hidden">
+      <h3>Job de montagem</h3>
+      <div id="jobStatus" class="muted"></div>
+      <div class="form-row">
+        <button id="btnPoll" class="secondary">Atualizar status</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+let projects = [];
+let currentProject = null;
+
+async function api(path, opts={}) {
+  const r = await fetch('/api/filmmaker' + path, { credentials: 'same-origin', ...opts });
+  if (!r.ok) {
+    const txt = await r.text().catch(()=>'');
+    throw new Error(txt || `HTTP ${r.status}`);
+  }
+  return r.json();
+}
+
+function formatDate(iso) {
+  if (!iso) return '-';
+  const d = new Date(iso);
+  return d.toLocaleString('pt-BR');
+}
+
+function setStatus(el, status) {
+  el.textContent = status;
+  el.className = 'status-badge status-' + (status || 'draft');
+}
+
+async function loadProjects() {
+  const data = await api('/projects');
+  projects = data.projects || [];
+  const tbody = document.querySelector('#projectsTable tbody');
+  tbody.innerHTML = '';
+  if (!projects.length) {
+    document.getElementById('projectsEmpty').classList.remove('hidden');
+    document.getElementById('projectsTable').classList.add('hidden');
+    return;
+  }
+  document.getElementById('projectsEmpty').classList.add('hidden');
+  document.getElementById('projectsTable').classList.remove('hidden');
+  projects.forEach(p => {
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    tr.innerHTML = `<td>${escapeHtml(p.title)}</td><td><span class="status-badge status-${p.status||'draft'}">${p.status||'draft'}</span></td><td>${formatDate(p.created_at)}</td>`;
+    tr.onclick = () => openProject(p.id);
+    tbody.appendChild(tr);
+  });
+}
+
+async function openProject(id) {
+  const p = await api('/projects/' + id);
+  currentProject = p;
+  document.getElementById('viewList').classList.add('hidden');
+  document.getElementById('viewNew').classList.add('hidden');
+  document.getElementById('viewDetail').classList.remove('hidden');
+  document.getElementById('detailTitle').textContent = p.title;
+  setStatus(document.getElementById('detailStatus'), p.status);
+
+  // Upload só aparece se ainda nao fez
+  const hasVideo = p.media && p.media.compressed && p.media.compressed.path;
+  document.getElementById('sectionUpload').classList.toggle('hidden', !!hasVideo);
+  document.getElementById('sectionPreview').classList.toggle('hidden', !hasVideo);
+  document.getElementById('sectionFrames').classList.toggle('hidden', !hasVideo);
+  document.getElementById('sectionActions').classList.toggle('hidden', !hasVideo);
+
+  if (hasVideo) {
+    document.getElementById('videoPreview').src = '/api/filmmaker/projects/' + id + '/download';
+    const fl = document.getElementById('framesList');
+    fl.innerHTML = '';
+    (p.media.frames || []).forEach((f, i) => {
+      const img = document.createElement('img');
+      img.src = '/api/filmmaker/projects/' + id + '/frames/' + (i+1);
+      fl.appendChild(img);
+    });
+  }
+
+  // Sequencia
+  const seq = (p.configuracoes && p.configuracoes.sequencia) ? p.configuracoes.sequencia : null;
+  document.getElementById('sectionSequencia').classList.toggle('hidden', !seq);
+  if (seq) document.getElementById('sequenciaText').textContent = JSON.stringify(seq, null, 2);
+
+  // Roteiro
+  document.getElementById('sectionRoteiro').classList.toggle('hidden', !p.roteiro);
+  if (p.roteiro) document.getElementById('roteiroText').textContent = p.roteiro;
+
+  // Job
+  document.getElementById('sectionJob').classList.add('hidden');
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function showList() {
+  currentProject = null;
+  document.getElementById('viewList').classList.remove('hidden');
+  document.getElementById('viewNew').classList.add('hidden');
+  document.getElementById('viewDetail').classList.add('hidden');
+  loadProjects();
+}
+
+document.getElementById('btnNewProject').onclick = () => {
+  document.getElementById('viewList').classList.add('hidden');
+  document.getElementById('viewNew').classList.remove('hidden');
+};
+document.getElementById('btnCancelNew').onclick = showList;
+
+document.getElementById('btnCreate').onclick = async () => {
+  const title = document.getElementById('newTitle').value.trim();
+  if (!title) return alert('Informe o título.');
+  const roteiro = document.getElementById('newRoteiro').value.trim();
+  await api('/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, roteiro: roteiro || undefined, configuracoes: {} })
+  });
+  showList();
+};
+
+document.getElementById('btnBack').onclick = showList;
+
+document.getElementById('btnUpload').onclick = async () => {
+  const input = document.getElementById('fileInput');
+  if (!input.files[0]) return alert('Selecione um vídeo.');
+  const spinner = document.getElementById('uploadSpinner');
+  const err = document.getElementById('uploadError');
+  spinner.classList.remove('hidden');
+  err.textContent = '';
+  try {
+    const fd = new FormData();
+    fd.append('file', input.files[0]);
+    const r = await fetch('/api/filmmaker/projects/' + currentProject.id + '/upload', {
+      method: 'POST', credentials: 'same-origin', body: fd
+    });
+    if (!r.ok) throw new Error(await r.text());
+    await openProject(currentProject.id);
+  } catch (e) {
+    err.textContent = 'Erro: ' + e.message;
+  } finally {
+    spinner.classList.add('hidden');
+  }
+};
+
+document.getElementById('btnAnalyze').onclick = async () => {
+  const spinner = document.getElementById('actionSpinner');
+  const res = document.getElementById('actionResult');
+  spinner.classList.remove('hidden');
+  res.textContent = '';
+  try {
+    const data = await api('/projects/' + currentProject.id + '/analyze', { method: 'POST' });
+    res.textContent = 'Análise concluída. ' + (data.sequencia && data.sequencia.clips ? data.sequencia.clips.length + ' clips sugeridos.' : '');
+    await openProject(currentProject.id);
+  } catch (e) {
+    res.textContent = 'Erro: ' + e.message;
+  } finally {
+    spinner.classList.add('hidden');
+  }
+};
+
+document.getElementById('btnRoteiro').onclick = async () => {
+  const spinner = document.getElementById('actionSpinner');
+  const res = document.getElementById('actionResult');
+  spinner.classList.remove('hidden');
+  res.textContent = '';
+  try {
+    const data = await api('/projects/' + currentProject.id + '/roteiro', { method: 'POST' });
+    res.textContent = 'Roteiro gerado.';
+    await openProject(currentProject.id);
+  } catch (e) {
+    res.textContent = 'Erro: ' + e.message;
+  } finally {
+    spinner.classList.add('hidden');
+  }
+};
+
+document.getElementById('btnRender').onclick = async () => {
+  const spinner = document.getElementById('actionSpinner');
+  const res = document.getElementById('actionResult');
+  spinner.classList.remove('hidden');
+  res.textContent = '';
+  try {
+    const data = await api('/projects/' + currentProject.id + '/render', { method: 'POST' });
+    res.textContent = 'Render iniciado. Job: ' + data.job_id;
+    document.getElementById('sectionJob').classList.remove('hidden');
+    document.getElementById('jobStatus').textContent = 'Status: rendering';
+    document.getElementById('btnPoll').dataset.jobId = data.job_id;
+  } catch (e) {
+    res.textContent = 'Erro: ' + e.message;
+  } finally {
+    spinner.classList.add('hidden');
+  }
+};
+
+document.getElementById('btnPoll').onclick = async () => {
+  const jobId = document.getElementById('btnPoll').dataset.jobId;
+  if (!jobId) return;
+  try {
+    const data = await api('/jobs/' + jobId + '/poll', { method: 'POST' });
+    document.getElementById('jobStatus').textContent = 'Status: ' + data.status + (data.media_path ? ' (pronto para download)' : '');
+  } catch (e) {
+    document.getElementById('jobStatus').textContent = 'Erro: ' + e.message;
+  }
+};
+
+loadProjects();
+</script>
+</body>
+</html>
