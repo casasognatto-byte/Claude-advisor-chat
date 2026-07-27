@@ -54,6 +54,11 @@ ADVISOR_MAX_USES = int(os.environ.get("ADVISOR_MAX_USES", "3"))
 ADVISOR_MAX_TOKENS = int(os.environ.get("ADVISOR_MAX_TOKENS", "2048"))
 WEB_SEARCH_MAX_USES = int(os.environ.get("WEB_SEARCH_MAX_USES", "3"))
 
+# --- Feature flags -----------------------------------------------------------
+# Filmmaker está suspenso temporariamente (Creatomate cancelado em 26/07/2026).
+# Para reativar, defina FILMMAKER_ENABLED=true no ambiente.
+FILMMAKER_ENABLED = os.environ.get("FILMMAKER_ENABLED", "").lower() in ("1", "true", "yes")
+
 # --- Configuração do Kimi para o chat principal -----------------------------
 # Pode reusar a mesma chave do Sogno Code (MOONSHOT_API_KEY) ou ter uma chave
 # dedicada para o chat (KIMI_CHAT_API_KEY).
@@ -464,13 +469,15 @@ from app.presentations import init_presentations_db, router as presentations_rou
 from app.prompts import init_prompts_db, router as prompts_router  # noqa: E402
 app.include_router(admin_router)
 app.include_router(code_router)
-app.include_router(filmmaker_router)
+if FILMMAKER_ENABLED:
+    app.include_router(filmmaker_router)
 app.include_router(image_router)
 app.include_router(materials_router)
 app.include_router(prompts_router)
 app.include_router(presentations_router)
 init_code_db()
-init_filmmaker_db()
+if FILMMAKER_ENABLED:
+    init_filmmaker_db()
 init_image_db()
 init_materials_db()
 init_prompts_db()
@@ -1185,12 +1192,13 @@ def presentations_page(request: Request):
     return FileResponse(os.path.join(STATIC_DIR, "apresentacoes.html"), headers=_NO_STORE)
 
 
-@app.get("/filmmaker")
-def filmmaker_page(request: Request):
-    """Filmmaker — producao de video com IA."""
-    if current_user(request) is None:
-        return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
-    return FileResponse(os.path.join(STATIC_DIR, "filmmaker.html"), headers=_NO_STORE)
+if FILMMAKER_ENABLED:
+    @app.get("/filmmaker")
+    def filmmaker_page(request: Request):
+        """Filmmaker — producao de video com IA."""
+        if current_user(request) is None:
+            return FileResponse(os.path.join(STATIC_DIR, "login.html"), headers=_NO_STORE)
+        return FileResponse(os.path.join(STATIC_DIR, "filmmaker.html"), headers=_NO_STORE)
 
 
 @app.get("/code")

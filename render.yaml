@@ -68,10 +68,12 @@ services:
         sync: false   # SEGREDO
       - key: R2_BUCKET
         sync: false
+      - key: FILMMAKER_ENABLED
+        value: "false"   # Suspenso temporariamente — Creatomate cancelado em 26/07/2026
       - key: FILMMAKER_ENGINE
         value: "stub"
       - key: CREATOMATE_API_KEY
-        sync: false   # SEGREDO — chave da API Creatomate (plan Essential)
+        sync: false   # SEGREDO — chave da API Creatomate (plan Essential); só preencher se reativar
       - key: CLICKUP_TOKEN
         sync: false   # SEGREDO — mesmo token do ZapSignBridge (pk_...); sem isso, alerta só loga
         # Testado de ponta a ponta (2026-07-04): manda DM real pro Davi no ClickUp
