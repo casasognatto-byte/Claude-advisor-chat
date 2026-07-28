@@ -88,6 +88,7 @@
   .engine-btn:hover { border-color: var(--accent-border); color: var(--text); }
   .engine-btn.active { border-color: var(--accent-border); color: var(--text); background: var(--accent-dim); }
   .engine-btn svg { width: 16px; height: 16px; flex: none; }
+  .engine-tag { font-size: 10px; color: var(--muted); margin-top: 6px; }
 
   main { flex: 1; overflow-y: auto; padding: 26px 22px; display: flex; flex-direction: column; gap: 14px; }
   .inner { max-width: 760px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
@@ -300,7 +301,11 @@
       </div>
       <div class="h-left">
         <div class="engine-picker" id="enginePicker">
-          <button class="engine-btn active" data-engine="claude" title="Usar Claude">
+          <button class="engine-btn active" data-engine="auto" title="Automático: o Sogno escolhe o modelo mais econômico para cada mensagem">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4L12 2z"/></svg>
+            Automático
+          </button>
+          <button class="engine-btn" data-engine="claude" title="Usar Claude">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7L12 2z"/></svg>
             Claude
           </button>
@@ -511,7 +516,7 @@
   let expandedClients = new Set();
   let activeEnvironmentId = null;
   let ownerFilterValue = "all"; // afeta tanto a árvore cliente/ambiente quanto as conversas soltas
-  let currentEngine = "claude"; // "claude" | "kimi"
+  let currentEngine = "auto"; // "auto" | "claude" | "kimi" ("auto": o roteador do servidor escolhe o modelo)
 
   const chat = document.getElementById("chat");
   const scroll = document.getElementById("scroll");
@@ -811,6 +816,7 @@
       const r = document.createElement("div"); r.className = "msg assistant";
       const av = document.createElement("div"); av.className = "avatar sogno"; av.textContent = "S";
       const b = document.createElement("div"); b.className = "bubble"; b.textContent = item.text;
+      if (item.engine) { const tag = document.createElement("div"); tag.className = "engine-tag"; tag.textContent = "via " + item.engine; b.appendChild(tag); }
       r.appendChild(av); r.appendChild(b); chat.appendChild(r);
     } else if (item.type === "advisor") {
       const box = document.createElement("div"); box.className = "advisor";
@@ -990,11 +996,11 @@
     activeId = id;
     const c = active();
     activeEnvironmentId = (c && c.environmentId) || null;
-    if (c) { await ensureData(c); setEngine(c.data.engine || "claude", false); }
+    if (c) { await ensureData(c); setEngine(c.data.engine || "auto", false); }
     renderList(); renderChat(); renderStagedRow(); input.focus();
   }
   function setEngine(engine, persistChoice) {
-    currentEngine = engine === "kimi" ? "kimi" : "claude";
+    currentEngine = ["auto", "kimi", "claude"].includes(engine) ? engine : "auto";
     document.querySelectorAll("#enginePicker .engine-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.engine === currentEngine);
     });
@@ -1051,7 +1057,7 @@
       const data = await res.json();
       for (const m of data.append) c.data.apiMessages.push(m);
       for (const a of data.advisor) { c.data.view.push({ type: "advisor", advice: a.advice }); renderItem({ type: "advisor", advice: a.advice }); }
-      c.data.view.push({ type: "assistant", text: data.text }); renderItem({ type: "assistant", text: data.text });
+      c.data.view.push({ type: "assistant", text: data.text, engine: data.engine_used }); renderItem({ type: "assistant", text: data.text, engine: data.engine_used });
       applyTokens(c, data.usage); renderTokens(); scrollDown(); await persist(c);
     } catch (e) {
       setTyping(false);

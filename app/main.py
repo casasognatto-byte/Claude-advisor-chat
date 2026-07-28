@@ -35,6 +35,8 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from passlib.hash import bcrypt as bcrypt_hasher
 from pydantic import BaseModel
 
+from app.model_router import pick_engine
+
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 except ImportError:  # pragma: no cover
@@ -948,14 +950,17 @@ def bulk_delete_own_conversations(body: ConvBulkDelete, request: Request):
 
 
 # --- Motor Kimi (alternativa ao Claude no chat principal) --------------------
-def _chat_with_kimi(messages: list[dict], system: str) -> dict:
+def _chat_with_kimi(messages: list[dict], system: str, model: str | None = None) -> dict:
     """Chama a API da Moonshot (Kimi) e devolve o mesmo formato de resposta do
-    /api/chat para que o frontend não precise saber qual motor respondeu."""
+    /api/chat para que o frontend não precise saber qual motor respondeu.
+    `model` permite ao roteador (modo Automático) escolher o modelo da
+    chamada; sem ele, vale o KIMI_CHAT_MODEL configurado."""
     if not KIMI_CHAT_API_KEY:
         raise HTTPException(500, "Chave da API do Kimi não está configurada no servidor.")
 
+    model = model or KIMI_CHAT_MODEL
     payload = {
-        "model": KIMI_CHAT_MODEL,
+        "model": model,
         "messages": [{"role": "system", "content": system}] + messages,
         "max_tokens": KIMI_CHAT_MAX_TOKENS,
     }
@@ -995,6 +1000,7 @@ def _chat_with_kimi(messages: list[dict], system: str) -> dict:
         "append": [{"role": "assistant", "content": text}],
         "text": text,
         "advisor": [],
+        "engine_used": model,
         "usage": {
             "executor": {
                 "input_tokens": usage_raw.get("prompt_tokens") or 0,
@@ -1027,6 +1033,14 @@ def chat(req: ChatRequest, request: Request):
             system_for_call = f"{SYSTEM_PROMPT}\n\n{_sogno_context_block(user['username'])}"
         except Exception as e:  # contexto é um extra; nunca deve derrubar o chat
             print(f"[chat] falha ao montar contexto do Sogno: {e}")
+
+    if engine == "auto":
+        # Modo Automático: o roteador decide quem responde esta mensagem
+        # (regras em app/model_router.py — ajustáveis pelo Davi via Sogno Code).
+        engine = pick_engine(req.messages)
+
+    if engine.startswith("kimi:"):
+        return _chat_with_kimi(req.messages, system_for_call, model=engine.split(":", 1)[1])
 
     if engine == "kimi":
         return _chat_with_kimi(req.messages, system_for_call)
@@ -1112,6 +1126,7 @@ def chat(req: ChatRequest, request: Request):
         "append": appended,
         "text": "\n".join(t for t in all_text if t).strip(),
         "advisor": all_advisor,
+        "engine_used": EXECUTOR_MODEL,
         "usage": {
             "executor": {
                 "input_tokens": usage["input_tokens"],

@@ -44,6 +44,27 @@ vira um atalho que aponta pro caminho da outra pessoa). Se isso acontecer, o sin
 recriar: `rm -rf .venv && python -m venv .venv && .venv/Scripts/python.exe -m pip install -r requirements.txt`.
 Isso não afeta produção (Render não usa esse `.venv`, só local).
 
+## Roteador de modelos (modo "Automático") — 28/07/2026
+
+O seletor de motor do chat ganhou a opção **"Automático"** (nova conversa já nasce nela;
+Claude e Kimi continuam como override manual). Nesse modo, o `/api/chat` chama
+`pick_engine` de **`app/model_router.py`** a cada mensagem e o servidor escolhe o modelo
+mais econômico capaz de responder:
+
+- precisa de web search/advisor (preço, fornecedor, links, "pesquise"...) → Claude (único
+  caminho com ferramentas);
+- tarefa complexa ou mensagem longa → Claude;
+- pergunta de código → `kimi-k2.7-code`;
+- conversa simples → `kimi-k2.6`.
+
+**Configuração: é tudo nas constantes do topo de `app/model_router.py`** (modelos de cada
+rota, listas de palavras-chave, limiar de mensagem longa), com comentários explicando —
+o Davi pode pedir o ajuste direto ao Sogno Code e fazer deploy. A resposta do `/api/chat`
+inclui `engine_used` e o balão da resposta mostra uma etiqueta "via \<modelo\>".
+Arquivos: `app/model_router.py` (novo), `app/main.py` (param `model` em `_chat_with_kimi`,
+ramo `engine == "auto"`, `engine_used` nas respostas), `app/static/index.html` (botão
+Automático, etiqueta). Mudança local, **sem push ainda** (protocolo de sempre).
+
 ## Estado no momento em que este arquivo foi criado (04/07/2026, sessão no PC Escrit)
 
 - Branch `main`, 1 commit local **não enviado ao GitHub**, aguardando aprovação do Davi:
